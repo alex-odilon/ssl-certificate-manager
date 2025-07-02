@@ -51,16 +51,21 @@ def generate_csr(private_key_pem: bytes, csr_data: Dict[str, str]) -> bytes:
         backend=default_backend()
     )
     
-    # Build subject
-    subject = x509.Name([
+    # Build subject attributes
+    subject_attributes = [
         x509.NameAttribute(NameOID.COUNTRY_NAME, csr_data['country']),
         x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, csr_data['state']),
         x509.NameAttribute(NameOID.LOCALITY_NAME, csr_data['locality']),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, csr_data['organization']),
         x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, csr_data['organizational_unit']),
         x509.NameAttribute(NameOID.COMMON_NAME, csr_data['common_name']),
-        x509.NameAttribute(NameOID.EMAIL_ADDRESS, csr_data['email']),
-    ])
+    ]
+    
+    # Add email only if provided
+    if csr_data.get('email'):
+        subject_attributes.append(x509.NameAttribute(NameOID.EMAIL_ADDRESS, csr_data['email']))
+    
+    subject = x509.Name(subject_attributes)
     
     # Create CSR
     csr = x509.CertificateSigningRequestBuilder().subject_name(
@@ -107,6 +112,7 @@ def create_pfx(cert_pem: bytes, key_pem: bytes, ca_bundle_pem: bytes, password: 
 def validate_private_key(key_data: bytes) -> Dict[str, Any]:
     """Validate and get info from private key"""
     try:
+        # Try to load without password first
         private_key = serialization.load_pem_private_key(
             key_data,
             password=None,
@@ -123,18 +129,34 @@ def validate_private_key(key_data: bytes) -> Dict[str, Any]:
                 'key_type': 'RSA',
                 'key_size': private_key.key_size,
                 'modulus': str(public_numbers.n)[:50] + '...',  # First 50 chars
-                'public_exponent': public_numbers.e
+                'public_exponent': public_numbers.e,
+                'encrypted': False
             }
         else:
             return {
                 'valid': True,
                 'key_type': 'Unknown',
-                'error': 'Unsupported key type'
+                'error': 'Unsupported key type',
+                'encrypted': False
             }
+    except ValueError as e:
+        error_msg = str(e)
+        if 'password' in error_msg.lower() or 'encrypted' in error_msg.lower():
+            return {
+                'valid': False,
+                'error': 'A chave privada está protegida por senha. Por favor, remova a senha antes de importar.',
+                'encrypted': True
+            }
+        return {
+            'valid': False,
+            'error': str(e),
+            'encrypted': False
+        }
     except Exception as e:
         return {
             'valid': False,
-            'error': str(e)
+            'error': str(e),
+            'encrypted': False
         }
 
 def validate_certificate(cert_data: bytes) -> Dict[str, Any]:

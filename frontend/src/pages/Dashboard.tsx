@@ -18,6 +18,7 @@ import {
   Folder,
   TrendingUp,
   Refresh,
+  Upload,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -99,6 +100,12 @@ const Dashboard: React.FC = () => {
   ];
 
   const quickActions = [
+    {
+      title: 'Importar Certificado/Chave',
+      description: 'Importe certificados, CA bundles ou chaves privadas',
+      icon: <Upload />,
+      path: '/files?upload=true',
+    },
     {
       title: 'Gerar Nova Chave Privada',
       description: 'Crie uma nova chave privada RSA 2048 bits',

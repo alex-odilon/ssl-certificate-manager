@@ -98,6 +98,15 @@ async def generate_pfx_endpoint(
         db.commit()
         db.refresh(db_pfx)
         
+        # Convert tags from JSON string to list
+        if db_pfx.tags:
+            try:
+                db_pfx.tags = json.loads(db_pfx.tags)
+            except:
+                db_pfx.tags = []
+        else:
+            db_pfx.tags = []
+        
         # Return response with password (only this time)
         response = PFXResponse.from_orm(db_pfx)
         response.password_masked = password  # Show password once
@@ -121,6 +130,15 @@ async def list_pfx_files(
     # Convert to response model with masked passwords
     responses = []
     for pfx in pfx_files:
+        # Convert tags from JSON string to list
+        if pfx.tags:
+            try:
+                pfx.tags = json.loads(pfx.tags)
+            except:
+                pfx.tags = []
+        else:
+            pfx.tags = []
+        
         response = PFXResponse.from_orm(pfx)
         responses.append(response)
     

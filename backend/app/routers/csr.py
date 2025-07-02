@@ -71,6 +71,15 @@ async def generate_csr_endpoint(
         db.commit()
         db.refresh(db_csr)
         
+        # Convert tags from JSON string to list
+        if db_csr.tags:
+            try:
+                db_csr.tags = json.loads(db_csr.tags)
+            except:
+                db_csr.tags = []
+        else:
+            db_csr.tags = []
+        
         return db_csr
     except Exception as e:
         db.rollback()
@@ -86,6 +95,17 @@ async def list_csrs(
         File.owner_id == current_user.id,
         File.file_type == FileType.CSR
     ).all()
+    
+    # Convert tags from JSON string to list for each CSR
+    for csr in csrs:
+        if csr.tags:
+            try:
+                csr.tags = json.loads(csr.tags)
+            except:
+                csr.tags = []
+        else:
+            csr.tags = []
+    
     return csrs
 
 @router.get("/{csr_id}/download")

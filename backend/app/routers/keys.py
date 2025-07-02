@@ -48,6 +48,15 @@ async def generate_key(
         db.commit()
         db.refresh(db_file)
         
+        # Convert tags from JSON string to list
+        if db_file.tags:
+            try:
+                db_file.tags = json.loads(db_file.tags)
+            except:
+                db_file.tags = []
+        else:
+            db_file.tags = []
+        
         return db_file
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -72,11 +81,20 @@ async def upload_key(
             raise HTTPException(status_code=400, detail=f"Invalid private key: {validation.get('error', 'Unknown error')}")
         
         # Save to file
+        os.makedirs(settings.SSL_FILES_DIR, exist_ok=True)  # Ensure directory exists
         filename = f"uploaded_key_{current_user.id}_{int(datetime.utcnow().timestamp())}.pem"
         file_path = os.path.join(settings.SSL_FILES_DIR, filename)
         
         async with aiofiles.open(file_path, 'wb') as f:
             await f.write(content)
+        
+        # Parse tags if they're a JSON string
+        tags_list = []
+        if tags:
+            try:
+                tags_list = json.loads(tags) if isinstance(tags, str) else tags
+            except:
+                tags_list = []
         
         # Save to database
         db_file = File(
@@ -85,16 +103,24 @@ async def upload_key(
             description=description,
             file_type=FileType.PRIVATE_KEY,
             file_path=file_path,
-            tags=tags,
+            tags=json.dumps(tags_list),  # Store as JSON string
             owner_id=current_user.id
         )
         db.add(db_file)
         db.commit()
         db.refresh(db_file)
         
+        # Convert tags back to list for response
+        db_file.tags = tags_list
+        
         return db_file
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in upload_key: {str(e)}")  # Log for debugging
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.get("/", response_model=List[FileResponse])
 async def list_keys(
@@ -106,6 +132,17 @@ async def list_keys(
         File.owner_id == current_user.id,
         File.file_type == FileType.PRIVATE_KEY
     ).all()
+    
+    # Convert tags from JSON string to list for each key
+    for key in keys:
+        if key.tags:
+            try:
+                key.tags = json.loads(key.tags)
+            except:
+                key.tags = []
+        else:
+            key.tags = []
+    
     return keys
 
 @router.get("/{key_id}/download")

@@ -64,6 +64,15 @@ async def upload_certificate(
         db.commit()
         db.refresh(db_file)
         
+        # Convert tags from JSON string to list
+        if db_file.tags:
+            try:
+                db_file.tags = json.loads(db_file.tags)
+            except:
+                db_file.tags = []
+        else:
+            db_file.tags = []
+        
         return db_file
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -85,6 +94,17 @@ async def list_certificates(
         query = query.filter(File.file_type.in_([FileType.CERTIFICATE, FileType.CA_BUNDLE]))
     
     certificates = query.all()
+    
+    # Convert tags from JSON string to list for each certificate
+    for cert in certificates:
+        if cert.tags:
+            try:
+                cert.tags = json.loads(cert.tags)
+            except:
+                cert.tags = []
+        else:
+            cert.tags = []
+    
     return certificates
 
 @router.get("/{cert_id}/download")

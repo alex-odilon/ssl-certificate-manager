@@ -11,6 +11,7 @@ import {
   IconButton,
   Tooltip,
   CircularProgress,
+  Divider,
 } from '@mui/material';
 import {
   VpnKey,
@@ -253,6 +254,24 @@ const GenerateKey: React.FC = () => {
           <strong>Segurança:</strong> Nunca compartilhe sua chave privada! 
           Mantenha-a segura e faça backups em locais protegidos.
         </Alert>
+        
+        <Divider sx={{ my: 3 }} />
+        
+        <Typography variant="h6" gutterBottom>
+          Importando Chaves Existentes
+        </Typography>
+        <Typography variant="body2" paragraph>
+          Se você já possui uma chave privada e deseja importá-la, certifique-se de que ela não está protegida por senha.
+        </Typography>
+        <Typography variant="body2" paragraph>
+          Para remover a senha de uma chave privada:
+        </Typography>
+        <Box sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1, mb: 2 }}>
+          <code>openssl rsa -in chave_com_senha.key -out chave_sem_senha.key</code>
+        </Box>
+        <Typography variant="caption" color="text.secondary">
+          Você será solicitado a digitar a senha atual da chave. O arquivo resultante não terá senha.
+        </Typography>
       </Paper>
     </Box>
   );

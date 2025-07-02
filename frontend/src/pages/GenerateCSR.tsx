@@ -32,7 +32,7 @@ interface GenerateCSRForm {
   locality: string;
   organization: string;
   organizational_unit: string;
-  email: string;
+  email?: string;
   custom_name: string;
   description: string;
 }
@@ -78,18 +78,28 @@ const GenerateCSR: React.FC = () => {
   const onSubmit = async (data: GenerateCSRForm) => {
     try {
       setLoading(true);
-      const response = await axios.post('/api/csr/generate', {
+      
+      // Prepare data, removing empty email
+      const requestData: any = {
         ...data,
         tags: tags,
-      });
+      };
+      
+      // Remove email if empty
+      if (!requestData.email || requestData.email.trim() === '') {
+        delete requestData.email;
+      }
+      
+      const response = await axios.post('/api/csr/generate', requestData);
       
       setGeneratedCSR(response.data);
       toast.success('CSR gerado com sucesso!');
       reset();
       setTags([]);
       setIsWildcard(false);
-    } catch (error) {
-      toast.error('Erro ao gerar CSR');
+    } catch (error: any) {
+      console.error('Erro ao gerar CSR:', error.response?.data);
+      toast.error(error.response?.data?.detail || 'Erro ao gerar CSR');
     } finally {
       setLoading(false);
     }
@@ -243,13 +253,12 @@ const GenerateCSR: React.FC = () => {
             </Box>
 
             <Box>
-              <Typography variant="subtitle1">Email</Typography>
+              <Typography variant="subtitle1">Email (Opcional)</Typography>
               <TextField
                 fullWidth
                 type="email"
                 placeholder="admin@exemplo.com.br"
                 {...register('email', {
-                  required: 'Email é obrigatório',
                   pattern: {
                     value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
                     message: 'Email inválido',

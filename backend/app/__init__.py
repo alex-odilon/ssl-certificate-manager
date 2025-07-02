@@ -2,7 +2,7 @@
 # Empty file to make the directory a Python package
 
 # backend/app/models/__init__.py
-from .models import User, File, PfxPassword, FileType
+# Empty file to make the directory a Python package
 
 # backend/app/schemas/__init__.py
 from .schemas import (

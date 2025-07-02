@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -45,6 +46,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import UploadDialog from '../components/UploadDialog';
 
 interface FileData {
   id: number;
@@ -58,6 +60,7 @@ interface FileData {
 }
 
 const Files: React.FC = () => {
+  const location = useLocation();
   const [files, setFiles] = useState<FileData[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<FileData[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -72,7 +75,13 @@ const Files: React.FC = () => {
 
   useEffect(() => {
     loadFiles();
-  }, []);
+    
+    // Check if should open upload dialog
+    const params = new URLSearchParams(location.search);
+    if (params.get('upload') === 'true') {
+      setUploadDialogOpen(true);
+    }
+  }, [location]);
 
   useEffect(() => {
     filterFiles();
@@ -416,16 +425,15 @@ const Files: React.FC = () => {
         </MenuItem>
       </Menu>
 
-      {/* Upload Dialog - To be implemented */}
-      <Dialog open={uploadDialogOpen} onClose={() => setUploadDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Importar Arquivo</DialogTitle>
-        <DialogContent>
-          <Typography>Funcionalidade de upload será implementada aqui</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUploadDialogOpen(false)}>Cancelar</Button>
-        </DialogActions>
-      </Dialog>
+      {/* Upload Dialog */}
+      <UploadDialog
+        open={uploadDialogOpen}
+        onClose={() => setUploadDialogOpen(false)}
+        onSuccess={() => {
+          setUploadDialogOpen(false);
+          loadFiles();
+        }}
+      />
     </Box>
   );
 };
