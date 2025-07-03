@@ -9,6 +9,14 @@ import {
   LinearProgress,
   IconButton,
   Tooltip,
+  Alert,
+  AlertTitle,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Collapse,
 } from '@mui/material';
 import {
   VpnKey,
@@ -19,6 +27,10 @@ import {
   TrendingUp,
   Refresh,
   Upload,
+  Warning,
+  CheckCircle,
+  ExpandMore,
+  ExpandLess,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -33,10 +45,20 @@ interface FileStats {
   total: number;
 }
 
+interface ExpiringCertificate {
+  id: number;
+  custom_name: string;
+  file_type: string;
+  days_until_expiry: number;
+  expiry_date: string;
+}
+
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<FileStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expiringCerts, setExpiringCerts] = useState<ExpiringCertificate[]>([]);
+  const [showExpiringDetails, setShowExpiringDetails] = useState(false);
 
   const loadStats = async () => {
     try {
@@ -50,8 +72,18 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const loadExpiringCertificates = async () => {
+    try {
+      const response = await axios.get('/api/certificates/expiring');
+      setExpiringCerts(response.data);
+    } catch (error) {
+      console.error('Erro ao carregar certificados expirando:', error);
+    }
+  };
+
   useEffect(() => {
     loadStats();
+    loadExpiringCertificates();
   }, []);
 
   const cards = [
@@ -60,42 +92,42 @@ const Dashboard: React.FC = () => {
       value: stats?.private_key || 0,
       icon: <VpnKey fontSize="large" />,
       color: '#4caf50',
-      path: '/files?type=private_key',
+      path: '/files?tab=1',
     },
     {
       title: 'Certificados',
       value: stats?.certificate || 0,
       icon: <Badge fontSize="large" />,
       color: '#2196f3',
-      path: '/files?type=certificate',
+      path: '/files?tab=2',
     },
     {
       title: 'CA Bundles',
       value: stats?.ca_bundle || 0,
       icon: <Folder fontSize="large" />,
       color: '#ff9800',
-      path: '/files?type=ca_bundle',
+      path: '/files?tab=3',
     },
     {
       title: 'CSRs',
       value: stats?.csr || 0,
       icon: <Description fontSize="large" />,
       color: '#9c27b0',
-      path: '/files?type=csr',
+      path: '/files?tab=4',
     },
     {
       title: 'Arquivos PFX',
       value: stats?.pfx || 0,
       icon: <FolderZip fontSize="large" />,
       color: '#f44336',
-      path: '/files?type=pfx',
+      path: '/files?tab=5',
     },
     {
       title: 'Total de Arquivos',
       value: stats?.total || 0,
       icon: <TrendingUp fontSize="large" />,
       color: '#00bcd4',
-      path: '/files',
+      path: '/files?tab=0',
     },
   ];
 
@@ -140,6 +172,65 @@ const Dashboard: React.FC = () => {
       </Box>
 
       {loading && <LinearProgress sx={{ mb: 2 }} />}
+
+      {/* Certificate Expiry Alert Panel */}
+      <Paper sx={{ mb: 3, p: 2 }}>
+        {expiringCerts.length === 0 ? (
+          <Alert severity="success" icon={<CheckCircle />}>
+            <AlertTitle>Tudo em ordem!</AlertTitle>
+            Seus certificados estão longe de vencer.
+          </Alert>
+        ) : (
+          <Alert 
+            severity="warning" 
+            icon={<Warning />}
+            action={
+              <IconButton
+                color="inherit"
+                size="small"
+                onClick={() => setShowExpiringDetails(!showExpiringDetails)}
+              >
+                {showExpiringDetails ? <ExpandLess /> : <ExpandMore />}
+              </IconButton>
+            }
+          >
+            <AlertTitle>Atenção! Certificados próximos do vencimento</AlertTitle>
+            {expiringCerts.length === 1 
+              ? 'Você tem 1 certificado que vencerá em breve.'
+              : `Você tem ${expiringCerts.length} certificados que vencerão em breve.`}
+          </Alert>
+        )}
+        
+        <Collapse in={showExpiringDetails && expiringCerts.length > 0}>
+          <List sx={{ mt: 2 }}>
+            {expiringCerts.map((cert) => (
+              <ListItem 
+                key={cert.id}
+                sx={{ 
+                  bgcolor: 'action.hover', 
+                  borderRadius: 1, 
+                  mb: 1,
+                  cursor: 'pointer',
+                }}
+                onClick={() => navigate('/files?type=certificate')}
+              >
+                <ListItemIcon>
+                  <Badge color="warning" />
+                </ListItemIcon>
+                <ListItemText
+                  primary={cert.custom_name}
+                  secondary={`Vence em ${new Date(cert.expiry_date).toLocaleDateString()} (${cert.days_until_expiry} dias)`}
+                />
+                <Chip 
+                  label={cert.days_until_expiry <= 7 ? 'URGENTE' : 'ATENÇÃO'}
+                  color={cert.days_until_expiry <= 7 ? 'error' : 'warning'}
+                  size="small"
+                />
+              </ListItem>
+            ))}
+          </List>
+        </Collapse>
+      </Paper>
 
       <Grid container spacing={3} mb={4}>
         {cards.map((card, index) => (

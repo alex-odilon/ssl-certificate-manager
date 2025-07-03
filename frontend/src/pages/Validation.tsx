@@ -22,6 +22,8 @@ import {
   Chip,
   CircularProgress,
   IconButton,
+  InputAdornment,
+  Autocomplete,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -34,6 +36,7 @@ import {
   FolderZip,
   Folder,
   ContentCopy,
+  Search,
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
@@ -50,22 +53,34 @@ interface FileOption {
   id: number;
   custom_name: string;
   file_type: string;
+  created_at: string;
+  description?: string;
 }
 
 const Validation: React.FC = () => {
   const [validationMode, setValidationMode] = useState<'upload' | 'existing'>('upload');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
+  const [selectedFileData, setSelectedFileData] = useState<FileOption | null>(null);
   const [pfxPassword, setPfxPassword] = useState('');
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [existingFiles, setExistingFiles] = useState<FileOption[]>([]);
+  const [fileTypeFilter, setFileTypeFilter] = useState<string>('all');
+  const [loadingPassword, setLoadingPassword] = useState(false);
 
   useEffect(() => {
     if (validationMode === 'existing') {
       loadExistingFiles();
     }
   }, [validationMode]);
+
+  // Load PFX password automatically when a PFX file is selected
+  useEffect(() => {
+    if (selectedFileData && selectedFileData.file_type === 'pfx') {
+      loadPfxPassword();
+    }
+  }, [selectedFileData]);
 
   const loadExistingFiles = async () => {
     try {
@@ -74,6 +89,43 @@ const Validation: React.FC = () => {
     } catch (error) {
       toast.error('Erro ao carregar arquivos');
     }
+  };
+
+  const loadPfxPassword = async () => {
+    if (!selectedFileData || selectedFileData.file_type !== 'pfx') return;
+    
+    try {
+      setLoadingPassword(true);
+      const response = await axios.get(`/api/pfx/${selectedFileData.id}/password`);
+      setPfxPassword(response.data.password);
+      toast.info('Senha do PFX carregada automaticamente');
+    } catch (error) {
+      console.error('Erro ao carregar senha do PFX:', error);
+    } finally {
+      setLoadingPassword(false);
+    }
+  };
+
+  const getFilteredFiles = () => {
+    if (fileTypeFilter === 'all') return existingFiles;
+    return existingFiles.filter(file => file.file_type === fileTypeFilter);
+  };
+
+  const getFileLabel = (file: FileOption) => {
+    const date = new Date(file.created_at).toLocaleDateString();
+    const type = getFileTypeLabel(file.file_type);
+    return `${file.custom_name} - ${type} (${date})`;
+  };
+
+  const getFileTypeLabel = (fileType: string) => {
+    const labels: Record<string, string> = {
+      private_key: 'Chave Privada',
+      certificate: 'Certificado',
+      ca_bundle: 'CA Bundle',
+      csr: 'CSR',
+      pfx: 'PFX',
+    };
+    return labels[fileType] || fileType;
   };
 
   const onDrop = (acceptedFiles: File[]) => {
@@ -306,7 +358,9 @@ const Validation: React.FC = () => {
               setValidationMode(e.target.value as 'upload' | 'existing');
               setSelectedFile(null);
               setSelectedFileId(null);
+              setSelectedFileData(null);
               setValidationResult(null);
+              setPfxPassword('');
             }}
           >
             <FormControlLabel
@@ -355,31 +409,95 @@ const Validation: React.FC = () => {
               )}
             </Box>
           ) : (
-            <FormControl fullWidth>
-              <InputLabel>Selecione um arquivo</InputLabel>
-              <Select
-                value={selectedFileId || ''}
-                onChange={(e) => setSelectedFileId(Number(e.target.value))}
-                label="Selecione um arquivo"
-              >
-                <MenuItem value="">
-                  <em>Nenhum</em>
-                </MenuItem>
-                {existingFiles.map((file) => (
-                  <MenuItem key={file.id} value={file.id}>
+            <Box>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Filtrar por tipo</InputLabel>
+                <Select
+                  value={fileTypeFilter}
+                  onChange={(e) => setFileTypeFilter(e.target.value)}
+                  label="Filtrar por tipo"
+                >
+                  <MenuItem value="all">Todos os tipos</MenuItem>
+                  <MenuItem value="private_key">
                     <Box display="flex" alignItems="center" gap={1}>
-                      {getFileIcon(file.file_type)}
-                      <Typography>{file.custom_name}</Typography>
+                      <VpnKey fontSize="small" />
+                      <span>Chaves Privadas</span>
                     </Box>
                   </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                  <MenuItem value="certificate">
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Badge fontSize="small" />
+                      <span>Certificados</span>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="ca_bundle">
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Folder fontSize="small" />
+                      <span>CA Bundles</span>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="csr">
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Description fontSize="small" />
+                      <span>CSRs</span>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="pfx">
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <FolderZip fontSize="small" />
+                      <span>PFX</span>
+                    </Box>
+                  </MenuItem>
+                </Select>
+              </FormControl>
+              
+              <Autocomplete
+                options={getFilteredFiles()}
+                getOptionLabel={getFileLabel}
+                value={selectedFileData}
+                onChange={(event, newValue) => {
+                  setSelectedFileData(newValue);
+                  setSelectedFileId(newValue?.id || null);
+                  if (!newValue || newValue.file_type !== 'pfx') {
+                    setPfxPassword('');
+                  }
+                }}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props}>
+                    <Box display="flex" alignItems="center" gap={1} width="100%">
+                      {getFileIcon(option.file_type)}
+                      <Box flex={1}>
+                        <Typography variant="body2">{option.custom_name}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {getFileTypeLabel(option.file_type)} • {new Date(option.created_at).toLocaleDateString()}
+                          {option.description && ` • ${option.description}`}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Selecione um arquivo"
+                    placeholder="Digite para buscar..."
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                )}
+              />
+            </Box>
           )}
         </Box>
 
         {((selectedFile && selectedFile.name.match(/\.(pfx|p12)$/i)) ||
-          (selectedFileId && existingFiles.find(f => f.id === selectedFileId)?.file_type === 'pfx')) && (
+          (selectedFileData && selectedFileData.file_type === 'pfx')) && (
           <Box sx={{ mt: 3 }}>
             <TextField
               fullWidth
@@ -387,7 +505,15 @@ const Validation: React.FC = () => {
               label="Senha do PFX"
               value={pfxPassword}
               onChange={(e) => setPfxPassword(e.target.value)}
-              helperText="Digite a senha do arquivo PFX"
+              helperText={loadingPassword ? "Carregando senha..." : "Digite a senha do arquivo PFX"}
+              disabled={loadingPassword}
+              InputProps={{
+                endAdornment: loadingPassword && (
+                  <InputAdornment position="end">
+                    <CircularProgress size={20} />
+                  </InputAdornment>
+                ),
+              }}
             />
           </Box>
         )}

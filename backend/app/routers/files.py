@@ -3,9 +3,10 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 import json
+import os
 
 from app.database import get_db
-from app.models import User, File, FileType
+from app.models import User, File, FileType, PfxPassword
 from app.schemas import FileResponse
 from app.routers.auth import get_current_user
 
@@ -80,22 +81,46 @@ async def delete_file(
     db: Session = Depends(get_db)
 ):
     """Delete a file"""
-    file = db.query(File).filter(
-        File.id == file_id,
-        File.owner_id == current_user.id
-    ).first()
-    
-    if not file:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Delete from database
-    db.delete(file)
-    db.commit()
-    
-    # Note: In production, you might also want to delete the actual file from disk
-    # But for safety, we'll keep them for now
-    
-    return {"message": "File deleted successfully"}
+    try:
+        # Find the file
+        file = db.query(File).filter(
+            File.id == file_id,
+            File.owner_id == current_user.id
+        ).first()
+        
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Store file path before deleting from DB
+        file_path = file.file_path
+        
+        # If it's a PFX, delete the password record first
+        if file.file_type == FileType.PFX:
+            pfx_password = db.query(PfxPassword).filter(
+                PfxPassword.file_id == file_id
+            ).first()
+            if pfx_password:
+                db.delete(pfx_password)
+        
+        # Delete from database
+        db.delete(file)
+        db.commit()
+        
+        # Try to delete the actual file from disk (optional)
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            print(f"Warning: Could not delete file from disk: {e}")
+            # Continue anyway - DB record is already deleted
+        
+        return {"message": "File deleted successfully", "id": file_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error deleting file: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
 
 @router.put("/{file_id}")
 async def update_file(

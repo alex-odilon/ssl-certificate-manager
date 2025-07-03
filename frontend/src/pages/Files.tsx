@@ -76,10 +76,18 @@ const Files: React.FC = () => {
   useEffect(() => {
     loadFiles();
     
-    // Check if should open upload dialog
+    // Check URL parameters
     const params = new URLSearchParams(location.search);
+    
+    // Check if should open upload dialog
     if (params.get('upload') === 'true') {
       setUploadDialogOpen(true);
+    }
+    
+    // Check if should change tab
+    const tab = params.get('tab');
+    if (tab) {
+      setTabValue(parseInt(tab));
     }
   }, [location]);
 
@@ -188,7 +196,7 @@ const Files: React.FC = () => {
   };
 
   const handleDelete = async (file: FileData) => {
-    if (!window.confirm(`Tem certeza que deseja excluir "${file.custom_name}"?`)) {
+    if (!window.confirm(`Tem certeza que deseja excluir "${file.custom_name}"?\n\nEsta ação não pode ser desfeita.`)) {
       return;
     }
 
@@ -196,8 +204,9 @@ const Files: React.FC = () => {
       await axios.delete(`/api/files/${file.id}`);
       toast.success('Arquivo excluído com sucesso');
       loadFiles();
-    } catch (error) {
-      toast.error('Erro ao excluir arquivo');
+    } catch (error: any) {
+      console.error('Erro ao excluir:', error);
+      toast.error(error.response?.data?.detail || 'Erro ao excluir arquivo');
     }
     handleMenuClose();
   };
