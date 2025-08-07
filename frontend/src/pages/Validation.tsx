@@ -24,6 +24,7 @@ import {
   IconButton,
   InputAdornment,
   Autocomplete,
+  Stack,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -37,6 +38,7 @@ import {
   Folder,
   ContentCopy,
   Search,
+  DnsOutlined,
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
@@ -270,6 +272,50 @@ const Validation: React.FC = () => {
             <ListItem>
               <ListItemText primary="Common Name" secondary={details.common_name} />
             </ListItem>
+            {details.san && details.san.length > 0 && (
+              <ListItem>
+                <ListItemText
+                  primary="SANs (Subject Alternative Names)"
+                  secondary={
+                    <Stack spacing={0.5} sx={{ mt: 1 }}>
+                      {details.san.map((domain: string, index: number) => (
+                        <Chip
+                          key={index}
+                          label={domain}
+                          size="small"
+                          icon={<DnsOutlined />}
+                          variant="outlined"
+                        />
+                      ))}
+                    </Stack>
+                  }
+                />
+              </ListItem>
+            )}
+            {details.extensions && Object.keys(details.extensions).length > 0 && (
+              <>
+                <Divider sx={{ my: 1 }} />
+                <ListItem>
+                  <ListItemText 
+                    primary="Extensões Solicitadas"
+                    secondary={
+                      <Box sx={{ mt: 1 }}>
+                        {Object.entries(details.extensions).map(([key, value]) => (
+                          <Box key={key} sx={{ mb: 1 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              {key}:
+                            </Typography>
+                            <Typography variant="body2">
+                              {Array.isArray(value) ? (value as string[]).join(', ') : String(value)}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
+                    }
+                  />
+                </ListItem>
+              </>
+            )}
             <ListItem>
               <ListItemText
                 primary="Assinatura válida"

@@ -59,6 +59,7 @@ class CSRCreate(BaseModel):
     organization: str
     organizational_unit: str
     email: Optional[EmailStr] = None
+    san_domains: Optional[List[str]] = []  # IMPORTANTE: Esta linha deve estar aqui!
     custom_name: str
     description: Optional[str] = None
     tags: Optional[List[str]] = []

@@ -16,6 +16,16 @@ from app.config import settings
 
 router = APIRouter()
 
+@router.post("/test-schema")
+async def test_schema(csr_data: CSRCreate):
+    """Test endpoint to verify CSRCreate schema"""
+    return {
+        "received_data": csr_data.dict(),
+        "has_san_domains": hasattr(csr_data, 'san_domains'),
+        "san_domains_value": getattr(csr_data, 'san_domains', None),
+        "all_fields": list(csr_data.__fields__.keys())
+    }
+
 @router.post("/generate", response_model=FileResponse)
 async def generate_csr_endpoint(
     csr_data: CSRCreate,
@@ -24,11 +34,21 @@ async def generate_csr_endpoint(
 ):
     """Generate a new CSR and its corresponding private key"""
     try:
+        # Debug - imprimir dados recebidos
+        print(f"CSR Data received:")
+        print(f"  Common Name: {csr_data.common_name}")
+        print(f"  SAN Domains: {getattr(csr_data, 'san_domains', 'ATTRIBUTE NOT FOUND')}")
+        print(f"  Organization: {csr_data.organization}")
+        print(f"  Full data: {csr_data.dict()}")
+        
         # Generate private key first
         private_key_pem = generate_private_key()
         
         # Generate CSR
-        csr_pem = generate_csr(private_key_pem, csr_data.dict())
+        csr_dict = csr_data.dict()
+        print(f"CSR dict being sent to generate_csr: {csr_dict}")
+        
+        csr_pem = generate_csr(private_key_pem, csr_dict)
         
         # Save private key
         key_filename = f"csr_private_key_{current_user.id}_{int(datetime.utcnow().timestamp())}.pem"
@@ -83,6 +103,10 @@ async def generate_csr_endpoint(
         return db_csr
     except Exception as e:
         db.rollback()
+        print(f"Error in generate_csr_endpoint: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/", response_model=List[FileResponse])

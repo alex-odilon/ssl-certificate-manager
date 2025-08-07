@@ -14,12 +14,20 @@ import {
   FormControlLabel,
   Checkbox,
   Divider,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
 } from '@mui/material';
 import {
   Description,
   Info,
   Download,
   Star,
+  Add,
+  Delete,
+  DnsOutlined,
+  Language,
 } from '@mui/icons-material';
 import { useForm } from 'react-hook-form';
 import axios from 'axios';
@@ -43,6 +51,9 @@ const GenerateCSR: React.FC = () => {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [isWildcard, setIsWildcard] = useState(false);
+  const [sanDomains, setSanDomains] = useState<string[]>([]);
+  const [sanInput, setSanInput] = useState('');
+  const [includeCommonNameInSan, setIncludeCommonNameInSan] = useState(true);
 
   const {
     register,
@@ -66,12 +77,47 @@ const GenerateCSR: React.FC = () => {
     setTags(tags.filter(tag => tag !== tagToDelete));
   };
 
+  const handleAddSanDomain = () => {
+    const domain = sanInput.trim();
+    if (domain && !sanDomains.includes(domain)) {
+      // Validação básica de domínio
+      const domainRegex = /^(\*\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (domainRegex.test(domain)) {
+        setSanDomains([...sanDomains, domain]);
+        setSanInput('');
+      } else {
+        toast.error('Formato de domínio inválido');
+      }
+    }
+  };
+
+  const handleDeleteSanDomain = (domainToDelete: string) => {
+    setSanDomains(sanDomains.filter(domain => domain !== domainToDelete));
+  };
+
+  const handleSanInputKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddSanDomain();
+    }
+  };
+
   const handleWildcardChange = (checked: boolean) => {
     setIsWildcard(checked);
     if (checked && commonName && !commonName.startsWith('*.')) {
-      setValue('common_name', `*.${commonName}`);
+      const wildcardDomain = `*.${commonName}`;
+      setValue('common_name', wildcardDomain);
+      
+      // Adicionar automaticamente o domínio base à lista SAN se não estiver lá
+      if (!sanDomains.includes(commonName)) {
+        setSanDomains([...sanDomains, commonName]);
+      }
     } else if (!checked && commonName && commonName.startsWith('*.')) {
-      setValue('common_name', commonName.substring(2));
+      const baseDomain = commonName.substring(2);
+      setValue('common_name', baseDomain);
+      
+      // Remover o domínio base da lista SAN se estava lá automaticamente
+      setSanDomains(sanDomains.filter(d => d !== baseDomain));
     }
   };
 
@@ -79,10 +125,31 @@ const GenerateCSR: React.FC = () => {
     try {
       setLoading(true);
       
+      // Preparar lista completa de domínios SAN
+      let finalSanList = [...sanDomains];
+      
+      // Adicionar o Common Name à lista SAN se a opção estiver marcada
+      if (includeCommonNameInSan && data.common_name && !finalSanList.includes(data.common_name)) {
+        finalSanList.unshift(data.common_name);
+      }
+      
+      // Se for wildcard, adicionar também o domínio base se não estiver na lista
+      if (data.common_name.startsWith('*.')) {
+        const baseDomain = data.common_name.substring(2);
+        if (!finalSanList.includes(baseDomain)) {
+          finalSanList.push(baseDomain);
+        }
+      }
+      
+      // Debug - verificar o que está sendo enviado
+      console.log('Common Name:', data.common_name);
+      console.log('SAN Domains:', finalSanList);
+      
       // Prepare data, removing empty email
       const requestData: any = {
         ...data,
         tags: tags,
+        san_domains: finalSanList, // Adicionar a lista de domínios SAN
       };
       
       // Remove email if empty
@@ -90,13 +157,17 @@ const GenerateCSR: React.FC = () => {
         delete requestData.email;
       }
       
+      console.log('Request data being sent:', requestData);
+      
       const response = await axios.post('/api/csr/generate', requestData);
       
       setGeneratedCSR(response.data);
       toast.success('CSR gerado com sucesso!');
       reset();
       setTags([]);
+      setSanDomains([]);
       setIsWildcard(false);
+      setIncludeCommonNameInSan(true);
     } catch (error: any) {
       console.error('Erro ao gerar CSR:', error.response?.data);
       toast.error(error.response?.data?.detail || 'Erro ao gerar CSR');
@@ -144,7 +215,7 @@ const GenerateCSR: React.FC = () => {
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
                 <Typography variant="subtitle1">Common Name (CN)</Typography>
-                <Tooltip title="O domínio para o qual você está solicitando o certificado">
+                <Tooltip title="O domínio principal para o qual você está solicitando o certificado">
                   <IconButton size="small">
                     <Info fontSize="small" />
                   </IconButton>
@@ -182,6 +253,120 @@ const GenerateCSR: React.FC = () => {
                 sx={{ mt: 1 }}
               />
             </Box>
+
+            {/* Nova seção para domínios adicionais SAN */}
+            <Box>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <Typography variant="subtitle1">Domínios Adicionais (SAN)</Typography>
+                <Tooltip title="Subject Alternative Names - Permite que o certificado seja válido para múltiplos domínios">
+                  <IconButton size="small">
+                    <Info fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+              
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2" gutterBottom>
+                  <strong>SAN (Subject Alternative Names)</strong> permite que um único certificado seja válido para múltiplos domínios.
+                </Typography>
+                <Typography variant="body2">
+                  Exemplo: Se o CN é "brasil.bet.br", você pode adicionar "*.brasil.bet.br" como SAN para cobrir todos os subdomínios.
+                </Typography>
+              </Alert>
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeCommonNameInSan}
+                    onChange={(e) => setIncludeCommonNameInSan(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Incluir o Common Name na lista SAN automaticamente"
+                sx={{ mb: 2 }}
+              />
+
+              <Box display="flex" gap={1} mb={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Digite um domínio adicional (ex: *.brasil.bet.br)"
+                  value={sanInput}
+                  onChange={(e) => setSanInput(e.target.value)}
+                  onKeyPress={handleSanInputKeyPress}
+                  InputProps={{
+                    startAdornment: <DnsOutlined sx={{ mr: 1, color: 'text.secondary' }} />,
+                  }}
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleAddSanDomain}
+                  disabled={!sanInput.trim()}
+                  startIcon={<Add />}
+                >
+                  Adicionar
+                </Button>
+              </Box>
+
+              {(sanDomains.length > 0 || (includeCommonNameInSan && commonName)) && (
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Domínios que serão incluídos no certificado:
+                  </Typography>
+                  <List dense>
+                    {includeCommonNameInSan && commonName && (
+                      <ListItem>
+                        <ListItemText 
+                          primary={commonName}
+                          secondary="Common Name (Principal)"
+                        />
+                        <Chip 
+                          label="CN" 
+                          size="small" 
+                          color="primary"
+                          sx={{ ml: 1 }}
+                        />
+                      </ListItem>
+                    )}
+                    {/* Se for wildcard, mostrar também o domínio base */}
+                    {commonName && commonName.startsWith('*.') && !sanDomains.includes(commonName.substring(2)) && (
+                      <ListItem>
+                        <ListItemText 
+                          primary={commonName.substring(2)}
+                          secondary="Domínio base (adicionado automaticamente)"
+                        />
+                        <Chip 
+                          label="Auto" 
+                          size="small" 
+                          color="secondary"
+                          sx={{ ml: 1 }}
+                        />
+                      </ListItem>
+                    )}
+                    {sanDomains.map((domain, index) => (
+                      <ListItem key={domain}>
+                        <ListItemText 
+                          primary={domain}
+                          secondary={`DNS.${includeCommonNameInSan ? index + 2 : index + 1}`}
+                        />
+                        <ListItemSecondaryAction>
+                          <IconButton 
+                            edge="end" 
+                            size="small"
+                            onClick={() => handleDeleteSanDomain(domain)}
+                          >
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Paper>
+              )}
+            </Box>
+
+            <Divider />
 
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
@@ -394,24 +579,25 @@ const GenerateCSR: React.FC = () => {
       <Paper sx={{ p: 3, mt: 3, bgcolor: 'action.hover' }}>
         <Typography variant="h6" gutterBottom>
           <Info sx={{ verticalAlign: 'middle', mr: 1 }} />
-          Sobre Certificados Wildcard
+          Sobre SAN (Subject Alternative Names)
         </Typography>
         <Typography variant="body2" paragraph>
-          Um certificado wildcard permite proteger um domínio e todos os seus subdomínios com um único certificado.
+          SAN permite que um único certificado seja válido para múltiplos domínios e subdomínios.
         </Typography>
-        <ul>
-          <li>
-            <Typography variant="body2">
-              <strong>Certificado Normal:</strong> exemplo.com.br (protege apenas o domínio principal)
-            </Typography>
-          </li>
-          <li>
-            <Typography variant="body2">
-              <strong>Certificado Wildcard:</strong> *.exemplo.com.br (protege todos os subdomínios como 
-              www.exemplo.com.br, api.exemplo.com.br, etc.)
-            </Typography>
-          </li>
-        </ul>
+        <Typography variant="body2" component="div">
+          <strong>Exemplos comuns:</strong>
+          <ul>
+            <li>CN: brasil.bet.br + SAN: *.brasil.bet.br (cobre o domínio principal e todos os subdomínios)</li>
+            <li>CN: www.exemplo.com + SAN: exemplo.com, api.exemplo.com (múltiplos domínios específicos)</li>
+            <li>CN: *.app.com + SAN: app.com, *.api.app.com (wildcard principal + domínio base + outro wildcard)</li>
+          </ul>
+        </Typography>
+        <Alert severity="info" sx={{ mt: 2 }}>
+          <Typography variant="body2">
+            <strong>Dica:</strong> A maioria das CAs modernas adiciona automaticamente o CN à lista SAN, 
+            mas é uma boa prática incluí-lo explicitamente.
+          </Typography>
+        </Alert>
       </Paper>
     </Box>
   );

@@ -42,8 +42,8 @@ def generate_private_key(key_size: int = 2048) -> bytes:
     )
     return pem
 
-def generate_csr(private_key_pem: bytes, csr_data: Dict[str, str]) -> bytes:
-    """Generate Certificate Signing Request"""
+def generate_csr(private_key_pem: bytes, csr_data: Dict[str, Any]) -> bytes:
+    """Generate Certificate Signing Request with SAN support"""
     # Load private key
     private_key = serialization.load_pem_private_key(
         private_key_pem,
@@ -67,10 +67,61 @@ def generate_csr(private_key_pem: bytes, csr_data: Dict[str, str]) -> bytes:
     
     subject = x509.Name(subject_attributes)
     
-    # Create CSR
-    csr = x509.CertificateSigningRequestBuilder().subject_name(
-        subject
-    ).sign(private_key, hashes.SHA256(), backend=default_backend())
+    # Create CSR builder
+    builder = x509.CertificateSigningRequestBuilder()
+    builder = builder.subject_name(subject)
+    
+    # Add extensions
+    extensions = []
+    
+    # Add Key Usage extension
+    builder = builder.add_extension(
+        x509.KeyUsage(
+            digital_signature=False,
+            content_commitment=False,
+            key_encipherment=True,
+            data_encipherment=True,
+            key_agreement=False,
+            key_cert_sign=False,
+            crl_sign=False,
+            encipher_only=False,
+            decipher_only=False,
+        ),
+        critical=False,
+    )
+    
+    # Add Extended Key Usage extension
+    builder = builder.add_extension(
+        x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]),
+        critical=False,
+    )
+    
+    # Add SAN extension if domains are provided OR if we have a common name
+    san_domains = csr_data.get('san_domains', [])
+    
+    # If no SAN domains but we have a common name, add it to SAN
+    if not san_domains and csr_data.get('common_name'):
+        san_domains = [csr_data['common_name']]
+        # If it's a wildcard, also add the base domain
+        if csr_data['common_name'].startswith('*.'):
+            base_domain = csr_data['common_name'][2:]
+            if base_domain not in san_domains:
+                san_domains.append(base_domain)
+    
+    if san_domains:
+        # Create list of DNS names for SAN
+        san_list = []
+        for domain in san_domains:
+            san_list.append(x509.DNSName(domain))
+        
+        # Add SAN extension
+        builder = builder.add_extension(
+            x509.SubjectAlternativeName(san_list),
+            critical=False,
+        )
+    
+    # Sign the CSR
+    csr = builder.sign(private_key, hashes.SHA256(), backend=default_backend())
     
     # Serialize to PEM
     return csr.public_bytes(serialization.Encoding.PEM)
@@ -206,10 +257,49 @@ def validate_csr(csr_data: bytes) -> Dict[str, Any]:
         for attribute in csr.subject:
             subject_info[attribute.oid._name] = attribute.value
         
+        # Get all extensions
+        extensions_info = {}
+        san_list = []
+        
+        try:
+            for ext in csr.extensions:
+                if isinstance(ext.value, x509.SubjectAlternativeName):
+                    san_list = [name.value for name in ext.value]
+                    extensions_info['Subject Alternative Name'] = san_list
+                elif isinstance(ext.value, x509.KeyUsage):
+                    key_usage = []
+                    if ext.value.digital_signature:
+                        key_usage.append('Digital Signature')
+                    if ext.value.key_encipherment:
+                        key_usage.append('Key Encipherment')
+                    if ext.value.data_encipherment:
+                        key_usage.append('Data Encipherment')
+                    if ext.value.key_agreement:
+                        key_usage.append('Key Agreement')
+                    if ext.value.key_cert_sign:
+                        key_usage.append('Key Cert Sign')
+                    if ext.value.crl_sign:
+                        key_usage.append('CRL Sign')
+                    extensions_info['Key Usage'] = key_usage
+                elif isinstance(ext.value, x509.ExtendedKeyUsage):
+                    extended_key_usage = []
+                    for usage in ext.value:
+                        if usage == x509.oid.ExtendedKeyUsageOID.SERVER_AUTH:
+                            extended_key_usage.append('TLS Web Server Authentication')
+                        elif usage == x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH:
+                            extended_key_usage.append('TLS Web Client Authentication')
+                        else:
+                            extended_key_usage.append(usage._name)
+                    extensions_info['Extended Key Usage'] = extended_key_usage
+        except:
+            pass
+        
         return {
             'valid': True,
             'common_name': subject_info.get('commonName', 'N/A'),
             'subject': subject_info,
+            'san': san_list,
+            'extensions': extensions_info,
             'signature_algorithm': csr.signature_algorithm_oid._name,
             'is_signature_valid': csr.is_signature_valid
         }
