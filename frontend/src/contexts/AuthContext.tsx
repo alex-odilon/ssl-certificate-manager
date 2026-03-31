@@ -6,6 +6,8 @@ interface User {
   id: number;
   username: string;
   email: string;
+  role: string;
+  force_password_change: boolean;
 }
 
 interface AuthContextData {
@@ -14,6 +16,7 @@ interface AuthContextData {
   signIn: (username: string, password: string) => Promise<void>;
   signUp: (email: string, username: string, password: string) => Promise<void>;
   signOut: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
@@ -56,6 +59,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const refreshUser = async () => {
+    await loadUser();
+  };
+
   const signIn = async (username: string, password: string) => {
     try {
       const formData = new FormData();
@@ -63,12 +70,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       formData.append('password', password);
 
       const response = await axios.post('/api/auth/token', formData);
-      const { access_token } = response.data;
+      const { access_token, force_password_change, role } = response.data;
 
       localStorage.setItem('token', access_token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
 
-      await loadUser();
+      // Load full user profile
+      const meRes = await axios.get('/api/auth/me');
+      setUser({ ...meRes.data, force_password_change: force_password_change ?? false, role: role ?? 'user' });
+
       toast.success('Login realizado com sucesso!');
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Erro ao fazer login');
@@ -98,7 +108,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

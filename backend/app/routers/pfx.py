@@ -5,6 +5,8 @@ from typing import List
 from datetime import datetime
 import os
 import json
+import hashlib
+import base64
 import aiofiles
 from cryptography.fernet import Fernet
 
@@ -17,9 +19,21 @@ from app.config import settings
 
 router = APIRouter()
 
-# Use a fixed key for encryption (in production, use a proper key management system)
-ENCRYPTION_KEY = Fernet.generate_key()
-fernet = Fernet(ENCRYPTION_KEY)
+
+def _make_fernet(secret_key: str) -> Fernet:
+    """Derive a stable Fernet key from the application SECRET_KEY.
+
+    Using a hash of SECRET_KEY means the encryption key is deterministic
+    across restarts (unlike Fernet.generate_key() which changes every time),
+    so stored PFX passwords remain decryptable after a server restart.
+    """
+    digest = hashlib.sha256(secret_key.encode()).digest()
+    fernet_key = base64.urlsafe_b64encode(digest)
+    return Fernet(fernet_key)
+
+
+fernet = _make_fernet(settings.SECRET_KEY)
+
 
 @router.post("/generate", response_model=PFXResponse)
 async def generate_pfx_endpoint(
@@ -35,45 +49,49 @@ async def generate_pfx_endpoint(
             File.owner_id == current_user.id,
             File.file_type == FileType.CERTIFICATE
         ).first()
-        
-        ca_bundle = db.query(File).filter(
-            File.id == pfx_data.ca_bundle_id,
-            File.owner_id == current_user.id,
-            File.file_type == FileType.CA_BUNDLE
-        ).first()
-        
+
+        ca_bundle = None
+        if pfx_data.ca_bundle_id:
+            ca_bundle = db.query(File).filter(
+                File.id == pfx_data.ca_bundle_id,
+                File.owner_id == current_user.id,
+                File.file_type == FileType.CA_BUNDLE,
+            ).first()
+
         private_key = db.query(File).filter(
             File.id == pfx_data.private_key_id,
             File.owner_id == current_user.id,
             File.file_type == FileType.PRIVATE_KEY
         ).first()
-        
-        if not all([certificate, ca_bundle, private_key]):
-            raise HTTPException(status_code=404, detail="One or more files not found")
-        
+
+        if not certificate or not private_key:
+            raise HTTPException(status_code=404, detail="Certificado ou chave privada não encontrados.")
+
         # Read file contents
         async with aiofiles.open(certificate.file_path, 'rb') as f:
             cert_pem = await f.read()
-        
-        async with aiofiles.open(ca_bundle.file_path, 'rb') as f:
-            ca_pem = await f.read()
-        
+
+        ca_pem: bytes | None = None
+        if ca_bundle:
+            async with aiofiles.open(ca_bundle.file_path, 'rb') as f:
+                ca_pem = await f.read()
+
         async with aiofiles.open(private_key.file_path, 'rb') as f:
             key_pem = await f.read()
-        
+
         # Generate password
         password = generate_password()
-        
-        # Create PFX
-        pfx_data_bytes = create_pfx(cert_pem, key_pem, ca_pem, password)
-        
+
+        # Create PFX (ca_pem is optional)
+        pfx_data_bytes = create_pfx(cert_pem, key_pem, password, ca_bundle_pem=ca_pem)
+
         # Save PFX file
         pfx_filename = f"pfx_{current_user.id}_{int(datetime.utcnow().timestamp())}.pfx"
         pfx_path = os.path.join(settings.SSL_FILES_DIR, pfx_filename)
-        
+
         async with aiofiles.open(pfx_path, 'wb') as f:
             await f.write(pfx_data_bytes)
-        
+
         # Save to database
         db_pfx = File(
             filename=pfx_filename,
@@ -86,7 +104,7 @@ async def generate_pfx_endpoint(
         )
         db.add(db_pfx)
         db.flush()  # Get the ID before committing
-        
+
         # Save encrypted password
         encrypted_password = fernet.encrypt(password.encode())
         db_password = PfxPassword(
@@ -94,27 +112,30 @@ async def generate_pfx_endpoint(
             encrypted_password=encrypted_password.decode()
         )
         db.add(db_password)
-        
+
         db.commit()
         db.refresh(db_pfx)
-        
+
         # Convert tags from JSON string to list
         if db_pfx.tags:
             try:
                 db_pfx.tags = json.loads(db_pfx.tags)
-            except:
+            except Exception:
                 db_pfx.tags = []
         else:
             db_pfx.tags = []
-        
+
         # Return response with password (only this time)
-        response = PFXResponse.from_orm(db_pfx)
+        response = PFXResponse.model_validate(db_pfx)
         response.password_masked = password  # Show password once
-        
+
         return response
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/", response_model=List[PFXResponse])
 async def list_pfx_files(
@@ -126,23 +147,22 @@ async def list_pfx_files(
         File.owner_id == current_user.id,
         File.file_type == FileType.PFX
     ).all()
-    
-    # Convert to response model with masked passwords
+
     responses = []
     for pfx in pfx_files:
-        # Convert tags from JSON string to list
         if pfx.tags:
             try:
                 pfx.tags = json.loads(pfx.tags)
-            except:
+            except Exception:
                 pfx.tags = []
         else:
             pfx.tags = []
-        
-        response = PFXResponse.from_orm(pfx)
+
+        response = PFXResponse.model_validate(pfx)
         responses.append(response)
-    
+
     return responses
+
 
 @router.get("/{pfx_id}/password")
 async def get_pfx_password(
@@ -150,31 +170,38 @@ async def get_pfx_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get the password for a PFX file (decrypted but not shown)"""
+    """Get the decrypted password for a PFX file"""
     pfx_file = db.query(File).filter(
         File.id == pfx_id,
         File.owner_id == current_user.id,
         File.file_type == FileType.PFX
     ).first()
-    
+
     if not pfx_file:
         raise HTTPException(status_code=404, detail="PFX file not found")
-    
+
     password_record = db.query(PfxPassword).filter(
         PfxPassword.file_id == pfx_id
     ).first()
-    
+
     if not password_record:
         raise HTTPException(status_code=404, detail="Password not found")
-    
-    # Decrypt password
-    decrypted_password = fernet.decrypt(password_record.encrypted_password.encode()).decode()
-    
-    # Return masked password with copy functionality handled by frontend
+
+    try:
+        decrypted_password = fernet.decrypt(
+            password_record.encrypted_password.encode()
+        ).decode()
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Não foi possível descriptografar a senha. Isso pode ocorrer se o SECRET_KEY foi alterado após a criação do PFX."
+        )
+
     return {
         "password": decrypted_password,
         "masked": "*" * 25
     }
+
 
 @router.get("/{pfx_id}/download")
 async def download_pfx(
@@ -188,13 +215,13 @@ async def download_pfx(
         File.owner_id == current_user.id,
         File.file_type == FileType.PFX
     ).first()
-    
+
     if not pfx_file:
         raise HTTPException(status_code=404, detail="PFX file not found")
-    
+
     if not os.path.exists(pfx_file.file_path):
         raise HTTPException(status_code=404, detail="File not found on disk")
-    
+
     return FastAPIFileResponse(
         path=pfx_file.file_path,
         filename=pfx_file.custom_name + ".pfx",

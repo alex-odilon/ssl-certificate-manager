@@ -101,8 +101,8 @@ const Validation: React.FC = () => {
       const response = await axios.get(`/api/pfx/${selectedFileData.id}/password`);
       setPfxPassword(response.data.password);
       toast.info('Senha do PFX carregada automaticamente');
-    } catch (error) {
-      console.error('Erro ao carregar senha do PFX:', error);
+    } catch {
+      // silent – password load is best-effort
     } finally {
       setLoadingPassword(false);
     }

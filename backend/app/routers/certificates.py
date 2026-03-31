@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
 import os
+import aiofiles
 import json
 import aiofiles
 
@@ -111,45 +112,52 @@ async def list_certificates(
 async def get_expiring_certificates(
     days: int = 30,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """Get certificates expiring within specified days"""
-    certificates = db.query(File).filter(
+    """Return CERTIFICATE and CA_BUNDLE files expiring within `days` days.
+
+    Works for certificates created by the tool AND imported ones — any file
+    stored as FileType.CERTIFICATE or FileType.CA_BUNDLE.
+    """
+    cert_files = db.query(File).filter(
         File.owner_id == current_user.id,
-        File.file_type.in_([FileType.CERTIFICATE, FileType.PFX])
+        File.file_type.in_([FileType.CERTIFICATE, FileType.CA_BUNDLE]),
     ).all()
-    
+
     expiring = []
-    
-    for cert in certificates:
+
+    for cert in cert_files:
         try:
-            # Read certificate file
-            async with aiofiles.open(cert.file_path, 'rb') as f:
+            if not os.path.exists(cert.file_path):
+                continue
+
+            async with aiofiles.open(cert.file_path, "rb") as f:
                 content = await f.read()
-            
-            # Validate and get expiry info
-            if cert.file_type == FileType.CERTIFICATE:
-                info = validate_certificate(content)
-                if info['valid'] and 'days_until_expiry' in info:
-                    if info['days_until_expiry'] <= days:
-                        expiring.append({
-                            'id': cert.id,
-                            'custom_name': cert.custom_name,
-                            'file_type': cert.file_type.value,
-                            'days_until_expiry': info['days_until_expiry'],
-                            'expiry_date': info['not_after']
-                        })
-            elif cert.file_type == FileType.PFX:
-                # For PFX files, we need to check without password
-                # This is a simplified approach - in production you might want to store cert info
-                pass
-        except Exception as e:
-            print(f"Error checking certificate {cert.id}: {e}")
+
+            info = validate_certificate(content)
+
+            if not info.get("valid"):
+                continue
+
+            days_left = info.get("days_until_expiry")
+            if days_left is None:
+                continue
+
+            if days_left <= days:
+                expiring.append({
+                    "id": cert.id,
+                    "custom_name": cert.custom_name,
+                    "file_type": cert.file_type.value,
+                    "days_until_expiry": days_left,
+                    "expiry_date": info.get("not_after", ""),
+                    "common_name": info.get("common_name", ""),
+                    "is_expired": info.get("is_expired", False),
+                })
+        except Exception as exc:
+            print(f"Warning: could not check cert {cert.id}: {exc}")
             continue
-    
-    # Sort by days until expiry
-    expiring.sort(key=lambda x: x['days_until_expiry'])
-    
+
+    expiring.sort(key=lambda x: x["days_until_expiry"])
     return expiring
 
 @router.get("/{cert_id}/download")

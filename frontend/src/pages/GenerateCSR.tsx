@@ -18,6 +18,12 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
 import {
   Description,
@@ -54,6 +60,17 @@ const GenerateCSR: React.FC = () => {
   const [sanDomains, setSanDomains] = useState<string[]>([]);
   const [sanInput, setSanInput] = useState('');
   const [includeCommonNameInSan, setIncludeCommonNameInSan] = useState(true);
+  const [keyType, setKeyType] = useState<'RSA' | 'EC'>('RSA');
+  const [keySize, setKeySize] = useState<number>(2048);
+
+  const RSA_SIZES = [2048, 3072, 4096];
+  const EC_SIZES = [{ label: 'P-256 (256 bits)', value: 256 }, { label: 'P-384 (384 bits)', value: 384 }];
+
+  const handleKeyTypeChange = (_: any, newType: 'RSA' | 'EC' | null) => {
+    if (!newType) return;
+    setKeyType(newType);
+    setKeySize(newType === 'RSA' ? 2048 : 256);
+  };
 
   const {
     register,
@@ -141,15 +158,13 @@ const GenerateCSR: React.FC = () => {
         }
       }
       
-      // Debug - verificar o que está sendo enviado
-      console.log('Common Name:', data.common_name);
-      console.log('SAN Domains:', finalSanList);
-      
       // Prepare data, removing empty email
       const requestData: any = {
         ...data,
         tags: tags,
-        san_domains: finalSanList, // Adicionar a lista de domínios SAN
+        san_domains: finalSanList,
+        key_type: keyType,
+        key_size: keySize,
       };
       
       // Remove email if empty
@@ -157,9 +172,7 @@ const GenerateCSR: React.FC = () => {
         delete requestData.email;
       }
       
-      console.log('Request data being sent:', requestData);
-      
-      const response = await axios.post('/api/csr/generate', requestData);
+const response = await axios.post('/api/csr/generate', requestData);
       
       setGeneratedCSR(response.data);
       toast.success('CSR gerado com sucesso!');
@@ -169,7 +182,6 @@ const GenerateCSR: React.FC = () => {
       setIsWildcard(false);
       setIncludeCommonNameInSan(true);
     } catch (error: any) {
-      console.error('Erro ao gerar CSR:', error.response?.data);
       toast.error(error.response?.data?.detail || 'Erro ao gerar CSR');
     } finally {
       setLoading(false);
@@ -211,7 +223,48 @@ const GenerateCSR: React.FC = () => {
         <Box component="form" onSubmit={handleSubmit(onSubmit)}>
           <Stack spacing={3}>
             <Typography variant="h6">Informações do Certificado</Typography>
-            
+
+            {/* Key Type + Size */}
+            <Box>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <Typography variant="subtitle1">Tipo de Chave Privada</Typography>
+                <Tooltip title="RSA é o padrão mais compatível. EC (Elliptic Curve) é mais moderno e eficiente.">
+                  <IconButton size="small"><Info fontSize="small" /></IconButton>
+                </Tooltip>
+              </Box>
+              <ToggleButtonGroup
+                value={keyType}
+                exclusive
+                onChange={handleKeyTypeChange}
+                size="small"
+                sx={{ mb: 2 }}
+              >
+                <ToggleButton value="RSA">RSA</ToggleButton>
+                <ToggleButton value="EC">EC (Elliptic Curve)</ToggleButton>
+              </ToggleButtonGroup>
+              <FormControl fullWidth size="small">
+                <InputLabel>
+                  {keyType === 'RSA' ? 'Tamanho da Chave (bits)' : 'Curva Elíptica'}
+                </InputLabel>
+                <Select
+                  value={keySize}
+                  label={keyType === 'RSA' ? 'Tamanho da Chave (bits)' : 'Curva Elíptica'}
+                  onChange={(e) => setKeySize(Number(e.target.value))}
+                >
+                  {keyType === 'RSA'
+                    ? RSA_SIZES.map((s) => (
+                        <MenuItem key={s} value={s}>{s} bits{s === 2048 ? ' (padrão)' : s === 4096 ? ' (alta segurança)' : ''}</MenuItem>
+                      ))
+                    : EC_SIZES.map((s) => (
+                        <MenuItem key={s.value} value={s.value}>{s.label}{s.value === 256 ? ' (padrão)' : ''}</MenuItem>
+                      ))
+                  }
+                </Select>
+              </FormControl>
+            </Box>
+
+            <Divider />
+
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
                 <Typography variant="subtitle1">Common Name (CN)</Typography>
@@ -270,7 +323,7 @@ const GenerateCSR: React.FC = () => {
                   <strong>SAN (Subject Alternative Names)</strong> permite que um único certificado seja válido para múltiplos domínios.
                 </Typography>
                 <Typography variant="body2">
-                  Exemplo: Se o CN é "brasil.bet.br", você pode adicionar "*.brasil.bet.br" como SAN para cobrir todos os subdomínios.
+                  Exemplo: Se o CN é "exemplo.com.br", você pode adicionar "*.exemplo.com.br" como SAN para cobrir todos os subdomínios.
                 </Typography>
               </Alert>
 
@@ -290,10 +343,10 @@ const GenerateCSR: React.FC = () => {
                 <TextField
                   fullWidth
                   size="small"
-                  placeholder="Digite um domínio adicional (ex: *.brasil.bet.br)"
+                  placeholder="Digite um domínio adicional (ex: *.exemplo.com.br)"
                   value={sanInput}
                   onChange={(e) => setSanInput(e.target.value)}
-                  onKeyPress={handleSanInputKeyPress}
+                  onKeyDown={handleSanInputKeyPress}
                   InputProps={{
                     startAdornment: <DnsOutlined sx={{ mr: 1, color: 'text.secondary' }} />,
                   }}
@@ -502,7 +555,7 @@ const GenerateCSR: React.FC = () => {
                   placeholder="Digite uma tag e pressione Enter"
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       handleAddTag();
@@ -587,7 +640,7 @@ const GenerateCSR: React.FC = () => {
         <Typography variant="body2" component="div">
           <strong>Exemplos comuns:</strong>
           <ul>
-            <li>CN: brasil.bet.br + SAN: *.brasil.bet.br (cobre o domínio principal e todos os subdomínios)</li>
+            <li>CN: exemplo.com.br + SAN: *.exemplo.com.br (cobre o domínio principal e todos os subdomínios)</li>
             <li>CN: www.exemplo.com + SAN: exemplo.com, api.exemplo.com (múltiplos domínios específicos)</li>
             <li>CN: *.app.com + SAN: app.com, *.api.app.com (wildcard principal + domínio base + outro wildcard)</li>
           </ul>

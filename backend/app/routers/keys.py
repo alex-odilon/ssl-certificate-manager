@@ -9,7 +9,7 @@ import aiofiles
 
 from app.database import get_db
 from app.models import User, File, FileType
-from app.schemas import FileCreate, FileResponse
+from app.schemas import FileCreate, KeyCreate, FileResponse
 from app.routers.auth import get_current_user
 from app.utils.crypto import generate_private_key, validate_private_key
 from app.config import settings
@@ -18,14 +18,14 @@ router = APIRouter()
 
 @router.post("/generate", response_model=FileResponse)
 async def generate_key(
-    file_data: FileCreate,
+    file_data: KeyCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Generate a new private key"""
+    """Generate a new private key (RSA 2048/3072/4096 or EC P-256/P-384)"""
     try:
         # Generate private key
-        private_key_pem = generate_private_key()
+        private_key_pem = generate_private_key(key_type=file_data.key_type, key_size=file_data.key_size)
         
         # Save to file
         filename = f"private_key_{current_user.id}_{int(datetime.utcnow().timestamp())}.pem"
@@ -117,9 +117,6 @@ async def upload_key(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in upload_key: {str(e)}")  # Log for debugging
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.get("/", response_model=List[FileResponse])

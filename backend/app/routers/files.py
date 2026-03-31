@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
+import csv
+import io
 import json
 import os
 
@@ -53,6 +56,38 @@ async def list_all_files(
             file.tags = []
     
     return files
+
+@router.get("/export")
+async def export_files_csv(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Export all files as a CSV for the current user."""
+    files = db.query(File).filter(
+        File.owner_id == current_user.id
+    ).order_by(File.created_at.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Nome", "Tipo", "Descrição", "Tags", "Criado em", "Importado em"])
+
+    for f in files:
+        tags = json.loads(f.tags) if f.tags else []
+        writer.writerow([
+            f.custom_name,
+            f.file_type.value,
+            f.description or "",
+            ", ".join(tags),
+            f.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            f.imported_at.strftime("%Y-%m-%d %H:%M:%S"),
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=\"meus_arquivos_ssl.csv\""},
+    )
 
 @router.get("/stats")
 async def get_file_stats(

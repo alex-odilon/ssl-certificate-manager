@@ -1,54 +1,47 @@
 #!/usr/bin/env python3
 """
-Script to create the first admin user
-Run this after the database is initialized
+Script to create or reset the admin user.
+Run after the database is initialised:  python create_admin.py
 """
-import sys
-from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-
 from app.database import SessionLocal, engine
-from app.models import Base, User, UserRole
+from app.models import Base, User
+from app.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 def create_admin():
-    # Create tables if they don't exist
     Base.metadata.create_all(bind=engine)
-    
     db = SessionLocal()
-    
+
     try:
-        # Check if admin already exists
-        admin = db.query(User).filter(User.username == "admin").first()
+        admin = db.query(User).filter(User.username == settings.ADMIN_USERNAME).first()
         if admin:
-            print("Admin user already exists!")
+            print("Admin user already exists — no changes made.")
             return
-        
-        # Create admin user
+
         admin_user = User(
-            email="admin@sslmanager.local",
-            username="admin",
-            hashed_password=pwd_context.hash("admin123"),
-            role=UserRole.ADMIN,
+            email=settings.ADMIN_EMAIL,
+            username=settings.ADMIN_USERNAME,
+            hashed_password=pwd_context.hash(settings.ADMIN_PASSWORD),
+            role="admin",
             is_active=True,
-            security_question="What is the default admin password?",
-            hashed_security_answer=pwd_context.hash("admin123")
+            force_password_change=True,
         )
-        
         db.add(admin_user)
         db.commit()
-        
-        print("Admin user created successfully!")
-        print("Username: admin")
-        print("Password: admin123")
-        print("Please change the password after first login!")
-        
-    except Exception as e:
-        print(f"Error creating admin: {e}")
+
+        print("Admin user created successfully.")
+        print(f"  Username : {settings.ADMIN_USERNAME}")
+        print(f"  Password : {settings.ADMIN_PASSWORD}  <- CHANGE THIS ON FIRST LOGIN")
+
+    except Exception as exc:
+        print(f"Error creating admin: {exc}")
         db.rollback()
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     create_admin()

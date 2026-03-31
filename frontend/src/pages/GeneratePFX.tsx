@@ -316,7 +316,7 @@ const GeneratePFX: React.FC = () => {
                   placeholder="Digite uma tag e pressione Enter"
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       handleAddTag();

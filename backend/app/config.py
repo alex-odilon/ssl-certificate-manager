@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     SSL_FILES_DIR: str = "/app/ssl_files"
     
+    # Admin User Configuration
+    ADMIN_EMAIL: str = "admin@sslmanager.local"
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin123" # Should be overridden in production
+    
     class Config:
         env_file = ".env"
 

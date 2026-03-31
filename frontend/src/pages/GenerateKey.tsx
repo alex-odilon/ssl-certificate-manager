@@ -12,6 +12,12 @@ import {
   Tooltip,
   CircularProgress,
   Divider,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
 import {
   VpnKey,
@@ -33,6 +39,17 @@ const GenerateKey: React.FC = () => {
   const [generatedKey, setGeneratedKey] = useState<any>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
+  const [keyType, setKeyType] = useState<'RSA' | 'EC'>('RSA');
+  const [keySize, setKeySize] = useState<number>(2048);
+
+  const RSA_SIZES = [2048, 3072, 4096];
+  const EC_SIZES = [{ label: 'P-256 (256 bits)', value: 256 }, { label: 'P-384 (384 bits)', value: 384 }];
+
+  const handleKeyTypeChange = (_: any, newType: 'RSA' | 'EC' | null) => {
+    if (!newType) return;
+    setKeyType(newType);
+    setKeySize(newType === 'RSA' ? 2048 : 256);
+  };
 
   const {
     register,
@@ -59,7 +76,8 @@ const GenerateKey: React.FC = () => {
         custom_name: data.custom_name,
         description: data.description,
         tags: tags,
-        file_type: 'private_key',
+        key_type: keyType,
+        key_size: keySize,
       });
       
       setGeneratedKey(response.data);
@@ -101,12 +119,52 @@ const GenerateKey: React.FC = () => {
         Gerar Chave Privada
       </Typography>
       <Typography variant="body1" color="text.secondary" paragraph>
-        Gere uma nova chave privada RSA de 2048 bits para uso em certificados SSL/TLS.
+        Gere uma nova chave privada para uso em certificados SSL/TLS. Suporta RSA (2048/3072/4096 bits) e Elliptic Curve (P-256/P-384).
       </Typography>
 
       <Paper sx={{ p: 4, mt: 3 }}>
         <Box component="form" onSubmit={handleSubmit(onSubmit)}>
           <Stack spacing={3}>
+            {/* Key Type + Size */}
+            <Box>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <Typography variant="subtitle1">Tipo de Chave</Typography>
+                <Tooltip title="RSA é o padrão mais compatível. EC (Elliptic Curve) é mais moderno e eficiente.">
+                  <IconButton size="small"><Info fontSize="small" /></IconButton>
+                </Tooltip>
+              </Box>
+              <ToggleButtonGroup
+                value={keyType}
+                exclusive
+                onChange={handleKeyTypeChange}
+                size="small"
+                sx={{ mb: 2 }}
+              >
+                <ToggleButton value="RSA">RSA</ToggleButton>
+                <ToggleButton value="EC">EC (Elliptic Curve)</ToggleButton>
+              </ToggleButtonGroup>
+
+              <FormControl fullWidth size="small">
+                <InputLabel>
+                  {keyType === 'RSA' ? 'Tamanho da Chave (bits)' : 'Curva Elíptica'}
+                </InputLabel>
+                <Select
+                  value={keySize}
+                  label={keyType === 'RSA' ? 'Tamanho da Chave (bits)' : 'Curva Elíptica'}
+                  onChange={(e) => setKeySize(Number(e.target.value))}
+                >
+                  {keyType === 'RSA'
+                    ? RSA_SIZES.map((s) => (
+                        <MenuItem key={s} value={s}>{s} bits{s === 2048 ? ' (padrão)' : s === 4096 ? ' (alta segurança)' : ''}</MenuItem>
+                      ))
+                    : EC_SIZES.map((s) => (
+                        <MenuItem key={s.value} value={s.value}>{s.label}{s.value === 256 ? ' (padrão)' : ''}</MenuItem>
+                      ))
+                  }
+                </Select>
+              </FormControl>
+            </Box>
+
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
                 <Typography variant="subtitle1">Nome Personalizado</Typography>
@@ -165,7 +223,7 @@ const GenerateKey: React.FC = () => {
                   placeholder="Digite uma tag e pressione Enter"
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       handleAddTag();
@@ -227,6 +285,9 @@ const GenerateKey: React.FC = () => {
             </Typography>
             <Typography variant="body2">
               Nome: <strong>{generatedKey.custom_name}</strong>
+            </Typography>
+            <Typography variant="body2">
+              Tipo: <strong>{keyType}</strong> &nbsp;|&nbsp; Tamanho: <strong>{keyType === 'EC' ? `P-${keySize}` : `${keySize} bits`}</strong>
             </Typography>
             <Typography variant="body2" sx={{ mt: 1 }}>
               <strong>Importante:</strong> Faça o download e armazene sua chave privada em local seguro.

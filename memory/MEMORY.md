@@ -1,0 +1,2 @@
+- [Architecture & Critical Quirks](project_architecture.md) — Python package shadowing: always edit schemas/__init__.py and models/__init__.py, NOT root-level .py files
+- [Fixes Applied (2026-03-29)](project_fixes_done.md) — All bugs fixed: SAN schema, PFX key persistence, subprocess security, CORS, Pydantic v2 migration

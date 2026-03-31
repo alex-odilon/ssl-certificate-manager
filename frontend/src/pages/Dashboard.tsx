@@ -26,7 +26,6 @@ import {
   Folder,
   TrendingUp,
   Refresh,
-  Upload,
   Warning,
   CheckCircle,
   ExpandMore,
@@ -131,32 +130,6 @@ const Dashboard: React.FC = () => {
     },
   ];
 
-  const quickActions = [
-    {
-      title: 'Importar Certificado/Chave',
-      description: 'Importe certificados, CA bundles ou chaves privadas',
-      icon: <Upload />,
-      path: '/files?upload=true',
-    },
-    {
-      title: 'Gerar Nova Chave Privada',
-      description: 'Crie uma nova chave privada RSA 2048 bits',
-      icon: <VpnKey />,
-      path: '/generate-key',
-    },
-    {
-      title: 'Gerar CSR',
-      description: 'Crie uma solicitação de assinatura de certificado',
-      icon: <Description />,
-      path: '/generate-csr',
-    },
-    {
-      title: 'Gerar PFX',
-      description: 'Combine certificado, chave e CA em um arquivo PFX',
-      icon: <FolderZip />,
-      path: '/generate-pfx',
-    },
-  ];
 
   return (
     <Box>
@@ -268,45 +241,6 @@ const Dashboard: React.FC = () => {
         ))}
       </Grid>
 
-      <Typography variant="h5" component="h2" gutterBottom>
-        Ações Rápidas
-      </Typography>
-      <Grid container spacing={3}>
-        {quickActions.map((action, index) => (
-          <Grid item xs={12} md={4} key={index}>
-            <Paper
-              sx={{
-                p: 3,
-                cursor: 'pointer',
-                transition: 'all 0.3s',
-                '&:hover': {
-                  transform: 'translateY(-5px)',
-                  boxShadow: 4,
-                },
-              }}
-              onClick={() => navigate(action.path)}
-            >
-              <Box display="flex" alignItems="center" mb={2}>
-                <Box
-                  sx={{
-                    mr: 2,
-                    p: 1,
-                    borderRadius: 2,
-                    backgroundColor: 'primary.main',
-                    color: 'primary.contrastText',
-                  }}
-                >
-                  {action.icon}
-                </Box>
-                <Typography variant="h6">{action.title}</Typography>
-              </Box>
-              <Typography variant="body2" color="textSecondary">
-                {action.description}
-              </Typography>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
     </Box>
   );
 };

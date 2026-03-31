@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse as FastAPIFileResponse
 from sqlalchemy.orm import Session
 from typing import List
@@ -16,15 +16,6 @@ from app.config import settings
 
 router = APIRouter()
 
-@router.post("/test-schema")
-async def test_schema(csr_data: CSRCreate):
-    """Test endpoint to verify CSRCreate schema"""
-    return {
-        "received_data": csr_data.dict(),
-        "has_san_domains": hasattr(csr_data, 'san_domains'),
-        "san_domains_value": getattr(csr_data, 'san_domains', None),
-        "all_fields": list(csr_data.__fields__.keys())
-    }
 
 @router.post("/generate", response_model=FileResponse)
 async def generate_csr_endpoint(
@@ -32,32 +23,18 @@ async def generate_csr_endpoint(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Generate a new CSR and its corresponding private key"""
+    """Generate a new CSR and its corresponding private key."""
     try:
-        # Debug - imprimir dados recebidos
-        print(f"CSR Data received:")
-        print(f"  Common Name: {csr_data.common_name}")
-        print(f"  SAN Domains: {getattr(csr_data, 'san_domains', 'ATTRIBUTE NOT FOUND')}")
-        print(f"  Organization: {csr_data.organization}")
-        print(f"  Full data: {csr_data.dict()}")
-        
-        # Generate private key first
-        private_key_pem = generate_private_key()
-        
-        # Generate CSR
-        csr_dict = csr_data.dict()
-        print(f"CSR dict being sent to generate_csr: {csr_dict}")
-        
-        csr_pem = generate_csr(private_key_pem, csr_dict)
-        
+        private_key_pem = generate_private_key(key_type=csr_data.key_type, key_size=csr_data.key_size)
+        csr_pem = generate_csr(private_key_pem, csr_data.model_dump())
+
         # Save private key
         key_filename = f"csr_private_key_{current_user.id}_{int(datetime.utcnow().timestamp())}.pem"
         key_path = os.path.join(settings.SSL_FILES_DIR, key_filename)
-        
+
         async with aiofiles.open(key_path, 'wb') as f:
             await f.write(private_key_pem)
-        
-        # Save private key to database
+
         db_key = File(
             filename=key_filename,
             custom_name=f"{csr_data.custom_name}_private_key",
@@ -68,15 +45,14 @@ async def generate_csr_endpoint(
             owner_id=current_user.id
         )
         db.add(db_key)
-        
+
         # Save CSR
         csr_filename = f"csr_{current_user.id}_{int(datetime.utcnow().timestamp())}.csr"
         csr_path = os.path.join(settings.SSL_FILES_DIR, csr_filename)
-        
+
         async with aiofiles.open(csr_path, 'wb') as f:
             await f.write(csr_pem)
-        
-        # Save CSR to database
+
         db_csr = File(
             filename=csr_filename,
             custom_name=csr_data.custom_name,
@@ -87,50 +63,45 @@ async def generate_csr_endpoint(
             owner_id=current_user.id
         )
         db.add(db_csr)
-        
         db.commit()
         db.refresh(db_csr)
-        
-        # Convert tags from JSON string to list
+
         if db_csr.tags:
             try:
                 db_csr.tags = json.loads(db_csr.tags)
-            except:
+            except Exception:
                 db_csr.tags = []
         else:
             db_csr.tags = []
-        
+
         return db_csr
     except Exception as e:
         db.rollback()
-        print(f"Error in generate_csr_endpoint: {str(e)}")
-        print(f"Error type: {type(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/", response_model=List[FileResponse])
 async def list_csrs(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all CSRs for the current user"""
+    """List all CSRs for the current user."""
     csrs = db.query(File).filter(
         File.owner_id == current_user.id,
         File.file_type == FileType.CSR
     ).all()
-    
-    # Convert tags from JSON string to list for each CSR
+
     for csr in csrs:
         if csr.tags:
             try:
                 csr.tags = json.loads(csr.tags)
-            except:
+            except Exception:
                 csr.tags = []
         else:
             csr.tags = []
-    
+
     return csrs
+
 
 @router.get("/{csr_id}/download")
 async def download_csr(
@@ -138,19 +109,19 @@ async def download_csr(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Download a CSR file"""
+    """Download a CSR file."""
     csr_file = db.query(File).filter(
         File.id == csr_id,
         File.owner_id == current_user.id,
         File.file_type == FileType.CSR
     ).first()
-    
+
     if not csr_file:
         raise HTTPException(status_code=404, detail="CSR not found")
-    
+
     if not os.path.exists(csr_file.file_path):
         raise HTTPException(status_code=404, detail="File not found on disk")
-    
+
     return FastAPIFileResponse(
         path=csr_file.file_path,
         filename=csr_file.custom_name + ".csr",

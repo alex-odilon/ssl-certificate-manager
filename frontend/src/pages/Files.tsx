@@ -205,7 +205,6 @@ const Files: React.FC = () => {
       toast.success('Arquivo excluído com sucesso');
       loadFiles();
     } catch (error: any) {
-      console.error('Erro ao excluir:', error);
       toast.error(error.response?.data?.detail || 'Erro ao excluir arquivo');
     }
     handleMenuClose();
@@ -259,19 +258,44 @@ const Files: React.FC = () => {
     { label: 'PFX', type: 'pfx' },
   ];
 
+  const handleExportCSV = async () => {
+    try {
+      const response = await axios.get('/api/files/export', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'meus_arquivos_ssl.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success('CSV exportado com sucesso!');
+    } catch {
+      toast.error('Erro ao exportar CSV');
+    }
+  };
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" component="h1">
           Meus Arquivos
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<Upload />}
-          onClick={() => setUploadDialogOpen(true)}
-        >
-          Importar Arquivo
-        </Button>
+        <Box display="flex" gap={1}>
+          <Button
+            variant="outlined"
+            startIcon={<Download />}
+            onClick={handleExportCSV}
+          >
+            Exportar CSV
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<Upload />}
+            onClick={() => setUploadDialogOpen(true)}
+          >
+            Importar Arquivo
+          </Button>
+        </Box>
       </Box>
 
       <Paper sx={{ mb: 3 }}>
