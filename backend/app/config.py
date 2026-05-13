@@ -8,9 +8,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     SSL_FILES_DIR: str = "/app/ssl_files"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost"
     
     # Admin User Configuration
-    ADMIN_EMAIL: str = "admin@sslmanager.local"
+    ADMIN_EMAIL: str = "admin@example.com"
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin123" # Should be overridden in production
     

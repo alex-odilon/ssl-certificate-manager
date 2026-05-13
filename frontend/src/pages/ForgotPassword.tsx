@@ -17,8 +17,10 @@ import {
 import { LockReset, Visibility, VisibilityOff } from '@mui/icons-material';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const ForgotPassword: React.FC = () => {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [activeStep, setActiveStep] = useState(0);
   const [username, setUsername] = useState('');
@@ -30,7 +32,7 @@ const ForgotPassword: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const steps = ['Identificação', 'Pergunta de Segurança', 'Nova Senha'];
+  const steps = [t.forgot_step1, t.forgot_step2, t.forgot_step3];
 
   const handleCheckUsername = async () => {
     try {
@@ -40,7 +42,7 @@ const ForgotPassword: React.FC = () => {
       setSecurityQuestion(response.data.security_question);
       setActiveStep(1);
     } catch (error: any) {
-      setError(error.response?.data?.detail || 'Usuário não encontrado');
+      setError(error.response?.data?.detail || t.forgot_user_not_found);
     } finally {
       setLoading(false);
     }
@@ -48,7 +50,7 @@ const ForgotPassword: React.FC = () => {
 
   const handleResetPassword = async () => {
     if (newPassword !== confirmPassword) {
-      setError('As senhas não coincidem');
+      setError(t.pwd_mismatch_err);
       return;
     }
 
@@ -60,15 +62,14 @@ const ForgotPassword: React.FC = () => {
         security_answer: securityAnswer,
         new_password: newPassword,
       });
-      
-      toast.success('Senha alterada com sucesso!');
+      toast.success(t.pwd_changed);
       navigate('/login');
     } catch (error: any) {
       if (error.response?.data?.detail?.includes('security answer')) {
-        setError('Resposta de segurança incorreta');
+        setError(t.forgot_wrong_answer);
         setActiveStep(1);
       } else {
-        setError(error.response?.data?.detail || 'Erro ao resetar senha');
+        setError(error.response?.data?.detail || t.forgot_reset_err);
       }
     } finally {
       setLoading(false);
@@ -82,15 +83,13 @@ const ForgotPassword: React.FC = () => {
           <>
             <TextField
               fullWidth
-              label="Nome de Usuário"
+              label={t.forgot_username_label}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               margin="normal"
               autoFocus
               onKeyPress={(e) => {
-                if (e.key === 'Enter' && username) {
-                  handleCheckUsername();
-                }
+                if (e.key === 'Enter' && username) handleCheckUsername();
               }}
             />
             <Button
@@ -100,7 +99,7 @@ const ForgotPassword: React.FC = () => {
               disabled={!username || loading}
               sx={{ mt: 3 }}
             >
-              {loading ? 'Verificando...' : 'Continuar'}
+              {loading ? t.forgot_checking : t.forgot_continue}
             </Button>
           </>
         );
@@ -109,18 +108,16 @@ const ForgotPassword: React.FC = () => {
         return (
           <>
             <Alert severity="info" sx={{ mb: 2 }}>
-              <Typography variant="body2" fontWeight="bold">
-                {securityQuestion}
-              </Typography>
+              <Typography variant="body2" fontWeight="bold">{securityQuestion}</Typography>
             </Alert>
             <TextField
               fullWidth
-              label="Resposta de Segurança"
+              label={t.forgot_security_answer_label}
               value={securityAnswer}
               onChange={(e) => setSecurityAnswer(e.target.value)}
               margin="normal"
               autoFocus
-              helperText="Digite exatamente como cadastrou (não diferencia maiúsculas)"
+              helperText={t.forgot_answer_helper}
             />
             <Button
               fullWidth
@@ -129,7 +126,7 @@ const ForgotPassword: React.FC = () => {
               disabled={!securityAnswer}
               sx={{ mt: 3 }}
             >
-              Continuar
+              {t.forgot_continue}
             </Button>
           </>
         );
@@ -139,7 +136,7 @@ const ForgotPassword: React.FC = () => {
           <>
             <TextField
               fullWidth
-              label="Nova Senha"
+              label={t.pwd_new}
               type={showPassword ? 'text' : 'password'}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
@@ -148,10 +145,7 @@ const ForgotPassword: React.FC = () => {
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setShowPassword(!showPassword)}
-                      edge="end"
-                    >
+                    <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
                       {showPassword ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
                   </InputAdornment>
@@ -160,7 +154,7 @@ const ForgotPassword: React.FC = () => {
             />
             <TextField
               fullWidth
-              label="Confirmar Nova Senha"
+              label={t.pwd_confirm}
               type={showPassword ? 'text' : 'password'}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -168,7 +162,7 @@ const ForgotPassword: React.FC = () => {
               error={confirmPassword !== '' && newPassword !== confirmPassword}
               helperText={
                 confirmPassword !== '' && newPassword !== confirmPassword
-                  ? 'As senhas não coincidem'
+                  ? t.pwd_mismatch_err
                   : ''
               }
             />
@@ -179,7 +173,7 @@ const ForgotPassword: React.FC = () => {
               disabled={!newPassword || !confirmPassword || loading}
               sx={{ mt: 3 }}
             >
-              {loading ? 'Alterando senha...' : 'Alterar Senha'}
+              {loading ? t.forgot_changing : t.forgot_change_btn}
             </Button>
           </>
         );
@@ -191,14 +185,7 @@ const ForgotPassword: React.FC = () => {
 
   return (
     <Container component="main" maxWidth="xs">
-      <Box
-        sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
+      <Box sx={{ marginTop: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <Paper
           elevation={3}
           sx={{
@@ -212,10 +199,8 @@ const ForgotPassword: React.FC = () => {
           }}
         >
           <LockReset sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
-          <Typography component="h1" variant="h5">
-            Recuperar Senha
-          </Typography>
-          
+          <Typography component="h1" variant="h5">{t.forgot_title}</Typography>
+
           <Box sx={{ width: '100%', mt: 3 }}>
             <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
               {steps.map((label) => (
@@ -226,18 +211,14 @@ const ForgotPassword: React.FC = () => {
             </Stepper>
 
             {error && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {error}
-              </Alert>
+              <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
             )}
 
             {renderStepContent()}
 
             <Box sx={{ textAlign: 'center', mt: 3 }}>
               <Link to="/login" style={{ textDecoration: 'none' }}>
-                <Typography variant="body2" color="primary">
-                  Voltar ao login
-                </Typography>
+                <Typography variant="body2" color="primary">{t.forgot_back_login}</Typography>
               </Link>
             </Box>
           </Box>

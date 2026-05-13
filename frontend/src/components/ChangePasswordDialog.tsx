@@ -14,6 +14,7 @@ import {
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ChangePasswordDialogProps {
   open: boolean;
@@ -21,6 +22,7 @@ interface ChangePasswordDialogProps {
 }
 
 const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({ open, onClose }) => {
+  const { t } = useLanguage();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,12 +34,12 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({ open, onClo
     setError('');
 
     if (newPassword !== confirmPassword) {
-      setError('As senhas não coincidem');
+      setError(t.pwd_mismatch_err);
       return;
     }
 
     if (newPassword.length < 6) {
-      setError('A nova senha deve ter pelo menos 6 caracteres');
+      setError(t.cpd_min_err);
       return;
     }
 
@@ -47,11 +49,10 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({ open, onClo
         current_password: currentPassword,
         new_password: newPassword,
       });
-      
-      toast.success('Senha alterada com sucesso!');
+      toast.success(t.pwd_changed);
       handleClose();
     } catch (error: any) {
-      setError(error.response?.data?.detail || 'Erro ao alterar senha');
+      setError(error.response?.data?.detail || t.pwd_change_err);
     } finally {
       setLoading(false);
     }
@@ -67,7 +68,7 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({ open, onClo
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Alterar Senha</DialogTitle>
+      <DialogTitle>{t.change_password}</DialogTitle>
       <DialogContent>
         <Box sx={{ pt: 2 }}>
           {error && (
@@ -75,10 +76,10 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({ open, onClo
               {error}
             </Alert>
           )}
-          
+
           <TextField
             fullWidth
-            label="Senha Atual"
+            label={t.pwd_current}
             type={showPassword ? 'text' : 'password'}
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
@@ -86,30 +87,27 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({ open, onClo
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowPassword(!showPassword)}
-                    edge="end"
-                  >
+                  <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
                     {showPassword ? <VisibilityOff /> : <Visibility />}
                   </IconButton>
                 </InputAdornment>
               ),
             }}
           />
-          
+
           <TextField
             fullWidth
-            label="Nova Senha"
+            label={t.pwd_new}
             type={showPassword ? 'text' : 'password'}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             margin="normal"
-            helperText="Mínimo de 6 caracteres"
+            helperText={t.cpd_min_chars}
           />
-          
+
           <TextField
             fullWidth
-            label="Confirmar Nova Senha"
+            label={t.pwd_confirm}
             type={showPassword ? 'text' : 'password'}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
@@ -117,22 +115,20 @@ const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({ open, onClo
             error={confirmPassword !== '' && newPassword !== confirmPassword}
             helperText={
               confirmPassword !== '' && newPassword !== confirmPassword
-                ? 'As senhas não coincidem'
+                ? t.pwd_mismatch_err
                 : ''
             }
           />
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={loading}>
-          Cancelar
-        </Button>
+        <Button onClick={handleClose} disabled={loading}>{t.cancel}</Button>
         <Button
           onClick={handleSubmit}
           variant="contained"
           disabled={!currentPassword || !newPassword || !confirmPassword || loading}
         >
-          {loading ? 'Alterando...' : 'Alterar'}
+          {loading ? t.cpd_changing : t.cpd_change_btn}
         </Button>
       </DialogActions>
     </Dialog>

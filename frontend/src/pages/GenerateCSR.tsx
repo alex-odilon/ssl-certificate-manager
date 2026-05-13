@@ -33,11 +33,11 @@ import {
   Add,
   Delete,
   DnsOutlined,
-  Language,
 } from '@mui/icons-material';
 import { useForm } from 'react-hook-form';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface GenerateCSRForm {
   common_name: string;
@@ -52,6 +52,7 @@ interface GenerateCSRForm {
 }
 
 const GenerateCSR: React.FC = () => {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [generatedCSR, setGeneratedCSR] = useState<any>(null);
   const [tags, setTags] = useState<string[]>([]);
@@ -97,13 +98,12 @@ const GenerateCSR: React.FC = () => {
   const handleAddSanDomain = () => {
     const domain = sanInput.trim();
     if (domain && !sanDomains.includes(domain)) {
-      // Validação básica de domínio
       const domainRegex = /^(\*\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
       if (domainRegex.test(domain)) {
         setSanDomains([...sanDomains, domain]);
         setSanInput('');
       } else {
-        toast.error('Formato de domínio inválido');
+        toast.error(t.csr_invalid_domain);
       }
     }
   };
@@ -124,16 +124,12 @@ const GenerateCSR: React.FC = () => {
     if (checked && commonName && !commonName.startsWith('*.')) {
       const wildcardDomain = `*.${commonName}`;
       setValue('common_name', wildcardDomain);
-      
-      // Adicionar automaticamente o domínio base à lista SAN se não estiver lá
       if (!sanDomains.includes(commonName)) {
         setSanDomains([...sanDomains, commonName]);
       }
     } else if (!checked && commonName && commonName.startsWith('*.')) {
       const baseDomain = commonName.substring(2);
       setValue('common_name', baseDomain);
-      
-      // Remover o domínio base da lista SAN se estava lá automaticamente
       setSanDomains(sanDomains.filter(d => d !== baseDomain));
     }
   };
@@ -141,24 +137,16 @@ const GenerateCSR: React.FC = () => {
   const onSubmit = async (data: GenerateCSRForm) => {
     try {
       setLoading(true);
-      
-      // Preparar lista completa de domínios SAN
       let finalSanList = [...sanDomains];
-      
-      // Adicionar o Common Name à lista SAN se a opção estiver marcada
       if (includeCommonNameInSan && data.common_name && !finalSanList.includes(data.common_name)) {
         finalSanList.unshift(data.common_name);
       }
-      
-      // Se for wildcard, adicionar também o domínio base se não estiver na lista
       if (data.common_name.startsWith('*.')) {
         const baseDomain = data.common_name.substring(2);
         if (!finalSanList.includes(baseDomain)) {
           finalSanList.push(baseDomain);
         }
       }
-      
-      // Prepare data, removing empty email
       const requestData: any = {
         ...data,
         tags: tags,
@@ -166,23 +154,19 @@ const GenerateCSR: React.FC = () => {
         key_type: keyType,
         key_size: keySize,
       };
-      
-      // Remove email if empty
       if (!requestData.email || requestData.email.trim() === '') {
         delete requestData.email;
       }
-      
-const response = await axios.post('/api/csr/generate', requestData);
-      
+      const response = await axios.post('/api/csr/generate', requestData);
       setGeneratedCSR(response.data);
-      toast.success('CSR gerado com sucesso!');
+      toast.success(t.csr_success_gen);
       reset();
       setTags([]);
       setSanDomains([]);
       setIsWildcard(false);
       setIncludeCommonNameInSan(true);
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Erro ao gerar CSR');
+      toast.error(error.response?.data?.detail || t.csr_err_gen);
     } finally {
       setLoading(false);
     }
@@ -190,12 +174,10 @@ const response = await axios.post('/api/csr/generate', requestData);
 
   const handleDownload = async () => {
     if (!generatedCSR) return;
-    
     try {
       const response = await axios.get(`/api/csr/${generatedCSR.id}/download`, {
         responseType: 'blob',
       });
-      
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -203,32 +185,27 @@ const response = await axios.post('/api/csr/generate', requestData);
       document.body.appendChild(link);
       link.click();
       link.remove();
-      
-      toast.success('Download iniciado!');
+      toast.success(t.csr_success_dl);
     } catch (error) {
-      toast.error('Erro ao fazer download');
+      toast.error(t.csr_err_dl);
     }
   };
 
   return (
     <Box>
-      <Typography variant="h4" component="h1" gutterBottom>
-        Gerar CSR
-      </Typography>
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Gere um Certificate Signing Request (CSR) para solicitar um certificado SSL/TLS.
-      </Typography>
+      <Typography variant="h4" component="h1" gutterBottom>{t.csr_title}</Typography>
+      <Typography variant="body1" color="text.secondary" paragraph>{t.csr_subtitle}</Typography>
 
       <Paper sx={{ p: 4, mt: 3 }}>
         <Box component="form" onSubmit={handleSubmit(onSubmit)}>
           <Stack spacing={3}>
-            <Typography variant="h6">Informações do Certificado</Typography>
+            <Typography variant="h6">{t.csr_cert_info_title}</Typography>
 
             {/* Key Type + Size */}
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Typography variant="subtitle1">Tipo de Chave Privada</Typography>
-                <Tooltip title="RSA é o padrão mais compatível. EC (Elliptic Curve) é mais moderno e eficiente.">
+                <Typography variant="subtitle1">{t.csr_key_type_label}</Typography>
+                <Tooltip title={t.gk_key_type_hint}>
                   <IconButton size="small"><Info fontSize="small" /></IconButton>
                 </Tooltip>
               </Box>
@@ -244,19 +221,23 @@ const response = await axios.post('/api/csr/generate', requestData);
               </ToggleButtonGroup>
               <FormControl fullWidth size="small">
                 <InputLabel>
-                  {keyType === 'RSA' ? 'Tamanho da Chave (bits)' : 'Curva Elíptica'}
+                  {keyType === 'RSA' ? t.gk_key_size_rsa : t.gk_key_size_ec}
                 </InputLabel>
                 <Select
                   value={keySize}
-                  label={keyType === 'RSA' ? 'Tamanho da Chave (bits)' : 'Curva Elíptica'}
+                  label={keyType === 'RSA' ? t.gk_key_size_rsa : t.gk_key_size_ec}
                   onChange={(e) => setKeySize(Number(e.target.value))}
                 >
                   {keyType === 'RSA'
                     ? RSA_SIZES.map((s) => (
-                        <MenuItem key={s} value={s}>{s} bits{s === 2048 ? ' (padrão)' : s === 4096 ? ' (alta segurança)' : ''}</MenuItem>
+                        <MenuItem key={s} value={s}>
+                          {s} bits{s === 2048 ? ` (${t.gk_default})` : s === 4096 ? ` (${t.gk_high_security})` : ''}
+                        </MenuItem>
                       ))
                     : EC_SIZES.map((s) => (
-                        <MenuItem key={s.value} value={s.value}>{s.label}{s.value === 256 ? ' (padrão)' : ''}</MenuItem>
+                        <MenuItem key={s.value} value={s.value}>
+                          {s.label}{s.value === 256 ? ` (${t.gk_default})` : ''}
+                        </MenuItem>
                       ))
                   }
                 </Select>
@@ -268,20 +249,18 @@ const response = await axios.post('/api/csr/generate', requestData);
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
                 <Typography variant="subtitle1">Common Name (CN)</Typography>
-                <Tooltip title="O domínio principal para o qual você está solicitando o certificado">
-                  <IconButton size="small">
-                    <Info fontSize="small" />
-                  </IconButton>
+                <Tooltip title={t.ac_cn_hint}>
+                  <IconButton size="small"><Info fontSize="small" /></IconButton>
                 </Tooltip>
               </Box>
               <TextField
                 fullWidth
                 placeholder="exemplo.com.br"
                 {...register('common_name', {
-                  required: 'Common Name é obrigatório',
+                  required: t.csr_cn_required,
                   pattern: {
                     value: /^(\*\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-                    message: 'Formato de domínio inválido',
+                    message: t.csr_invalid_domain,
                   },
                 })}
                 error={!!errors.common_name}
@@ -298,32 +277,25 @@ const response = await axios.post('/api/csr/generate', requestData);
                 label={
                   <Box display="flex" alignItems="center" gap={1}>
                     <Star fontSize="small" />
-                    <Typography variant="body2">
-                      Certificado Wildcard (*.exemplo.com.br)
-                    </Typography>
+                    <Typography variant="body2">{t.csr_wildcard_label}</Typography>
                   </Box>
                 }
                 sx={{ mt: 1 }}
               />
             </Box>
 
-            {/* Nova seção para domínios adicionais SAN */}
+            {/* SAN section */}
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Typography variant="subtitle1">Domínios Adicionais (SAN)</Typography>
-                <Tooltip title="Subject Alternative Names - Permite que o certificado seja válido para múltiplos domínios">
-                  <IconButton size="small">
-                    <Info fontSize="small" />
-                  </IconButton>
+                <Typography variant="subtitle1">{t.csr_san_label}</Typography>
+                <Tooltip title={t.ac_san_hint}>
+                  <IconButton size="small"><Info fontSize="small" /></IconButton>
                 </Tooltip>
               </Box>
-              
+
               <Alert severity="info" sx={{ mb: 2 }}>
-                <Typography variant="body2" gutterBottom>
-                  <strong>SAN (Subject Alternative Names)</strong> permite que um único certificado seja válido para múltiplos domínios.
-                </Typography>
                 <Typography variant="body2">
-                  Exemplo: Se o CN é "exemplo.com.br", você pode adicionar "*.exemplo.com.br" como SAN para cobrir todos os subdomínios.
+                  <strong>SAN (Subject Alternative Names)</strong> — {t.csr_san_include_cn}
                 </Typography>
               </Alert>
 
@@ -335,7 +307,7 @@ const response = await axios.post('/api/csr/generate', requestData);
                     color="primary"
                   />
                 }
-                label="Incluir o Common Name na lista SAN automaticamente"
+                label={t.csr_san_include_cn}
                 sx={{ mb: 2 }}
               />
 
@@ -343,7 +315,7 @@ const response = await axios.post('/api/csr/generate', requestData);
                 <TextField
                   fullWidth
                   size="small"
-                  placeholder="Digite um domínio adicional (ex: *.exemplo.com.br)"
+                  placeholder={t.csr_san_placeholder}
                   value={sanInput}
                   onChange={(e) => setSanInput(e.target.value)}
                   onKeyDown={handleSanInputKeyPress}
@@ -358,57 +330,39 @@ const response = await axios.post('/api/csr/generate', requestData);
                   disabled={!sanInput.trim()}
                   startIcon={<Add />}
                 >
-                  Adicionar
+                  {t.add}
                 </Button>
               </Box>
 
               {(sanDomains.length > 0 || (includeCommonNameInSan && commonName)) && (
                 <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Domínios que serão incluídos no certificado:
-                  </Typography>
                   <List dense>
                     {includeCommonNameInSan && commonName && (
                       <ListItem>
-                        <ListItemText 
+                        <ListItemText
                           primary={commonName}
                           secondary="Common Name (Principal)"
                         />
-                        <Chip 
-                          label="CN" 
-                          size="small" 
-                          color="primary"
-                          sx={{ ml: 1 }}
-                        />
+                        <Chip label="CN" size="small" color="primary" sx={{ ml: 1 }} />
                       </ListItem>
                     )}
-                    {/* Se for wildcard, mostrar também o domínio base */}
                     {commonName && commonName.startsWith('*.') && !sanDomains.includes(commonName.substring(2)) && (
                       <ListItem>
-                        <ListItemText 
+                        <ListItemText
                           primary={commonName.substring(2)}
-                          secondary="Domínio base (adicionado automaticamente)"
+                          secondary="Base domain (auto)"
                         />
-                        <Chip 
-                          label="Auto" 
-                          size="small" 
-                          color="secondary"
-                          sx={{ ml: 1 }}
-                        />
+                        <Chip label="Auto" size="small" color="secondary" sx={{ ml: 1 }} />
                       </ListItem>
                     )}
                     {sanDomains.map((domain, index) => (
                       <ListItem key={domain}>
-                        <ListItemText 
+                        <ListItemText
                           primary={domain}
                           secondary={`DNS.${includeCommonNameInSan ? index + 2 : index + 1}`}
                         />
                         <ListItemSecondaryAction>
-                          <IconButton 
-                            edge="end" 
-                            size="small"
-                            onClick={() => handleDeleteSanDomain(domain)}
-                          >
+                          <IconButton edge="end" size="small" onClick={() => handleDeleteSanDomain(domain)}>
                             <Delete fontSize="small" />
                           </IconButton>
                         </ListItemSecondaryAction>
@@ -423,21 +377,19 @@ const response = await axios.post('/api/csr/generate', requestData);
 
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Typography variant="subtitle1">País (C)</Typography>
+                <Typography variant="subtitle1">{t.csr_country_label}</Typography>
                 <Tooltip title="Código do país com 2 letras (ex: BR para Brasil)">
-                  <IconButton size="small">
-                    <Info fontSize="small" />
-                  </IconButton>
+                  <IconButton size="small"><Info fontSize="small" /></IconButton>
                 </Tooltip>
               </Box>
               <TextField
                 fullWidth
                 placeholder="BR"
                 {...register('country', {
-                  required: 'País é obrigatório',
+                  required: t.csr_country_required,
                   pattern: {
                     value: /^[A-Z]{2}$/,
-                    message: 'Use código de 2 letras maiúsculas',
+                    message: 'Use 2-letter country code',
                   },
                 })}
                 error={!!errors.country}
@@ -447,51 +399,51 @@ const response = await axios.post('/api/csr/generate', requestData);
             </Box>
 
             <Box>
-              <Typography variant="subtitle1">Estado/Província (ST)</Typography>
+              <Typography variant="subtitle1">{t.csr_state_label}</Typography>
               <TextField
                 fullWidth
                 placeholder="São Paulo"
-                {...register('state', { required: 'Estado é obrigatório' })}
+                {...register('state', { required: t.csr_state_required })}
                 error={!!errors.state}
                 helperText={errors.state?.message}
               />
             </Box>
 
             <Box>
-              <Typography variant="subtitle1">Cidade (L)</Typography>
+              <Typography variant="subtitle1">{t.csr_locality_label}</Typography>
               <TextField
                 fullWidth
                 placeholder="São Paulo"
-                {...register('locality', { required: 'Cidade é obrigatória' })}
+                {...register('locality', { required: t.csr_locality_required })}
                 error={!!errors.locality}
                 helperText={errors.locality?.message}
               />
             </Box>
 
             <Box>
-              <Typography variant="subtitle1">Organização (O)</Typography>
+              <Typography variant="subtitle1">{t.csr_org_label}</Typography>
               <TextField
                 fullWidth
                 placeholder="Minha Empresa LTDA"
-                {...register('organization', { required: 'Organização é obrigatória' })}
+                {...register('organization', { required: t.csr_org_required })}
                 error={!!errors.organization}
                 helperText={errors.organization?.message}
               />
             </Box>
 
             <Box>
-              <Typography variant="subtitle1">Unidade Organizacional (OU)</Typography>
+              <Typography variant="subtitle1">{t.csr_ou_label}</Typography>
               <TextField
                 fullWidth
                 placeholder="TI"
-                {...register('organizational_unit', { required: 'Unidade é obrigatória' })}
+                {...register('organizational_unit', { required: t.csr_org_required })}
                 error={!!errors.organizational_unit}
                 helperText={errors.organizational_unit?.message}
               />
             </Box>
 
             <Box>
-              <Typography variant="subtitle1">Email (Opcional)</Typography>
+              <Typography variant="subtitle1">{t.csr_email_label}</Typography>
               <TextField
                 fullWidth
                 type="email"
@@ -508,19 +460,19 @@ const response = await axios.post('/api/csr/generate', requestData);
             </Box>
 
             <Divider sx={{ my: 2 }} />
-            
-            <Typography variant="h6">Identificação do Arquivo</Typography>
+
+            <Typography variant="h6">{t.csr_file_id_title}</Typography>
 
             <Box>
-              <Typography variant="subtitle1">Nome Personalizado</Typography>
+              <Typography variant="subtitle1">{t.csr_custom_name_label}</Typography>
               <TextField
                 fullWidth
                 placeholder="csr_principal_2024"
                 {...register('custom_name', {
-                  required: 'Nome é obrigatório',
+                  required: t.csr_custom_name_required,
                   pattern: {
                     value: /^[a-zA-Z0-9_-]+$/,
-                    message: 'Use apenas letras, números, _ e -',
+                    message: t.csr_name_pattern,
                   },
                 })}
                 error={!!errors.custom_name}
@@ -529,57 +481,38 @@ const response = await axios.post('/api/csr/generate', requestData);
             </Box>
 
             <Box>
-              <Typography variant="subtitle1">Descrição</Typography>
+              <Typography variant="subtitle1">{t.csr_desc_label}</Typography>
               <TextField
                 fullWidth
                 multiline
                 rows={3}
-                placeholder="CSR para renovação do certificado principal"
+                placeholder={t.csr_desc_label}
                 {...register('description')}
               />
             </Box>
 
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Typography variant="subtitle1">Tags</Typography>
-                <Tooltip title="Adicione tags para facilitar a busca">
-                  <IconButton size="small">
-                    <Info fontSize="small" />
-                  </IconButton>
-                </Tooltip>
+                <Typography variant="subtitle1">{t.tags}</Typography>
               </Box>
               <Box display="flex" gap={1} mb={1}>
                 <TextField
                   fullWidth
                   size="small"
-                  placeholder="Digite uma tag e pressione Enter"
+                  placeholder={t.csr_tag_placeholder}
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddTag();
-                    }
+                    if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); }
                   }}
                 />
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={handleAddTag}
-                  disabled={!tagInput.trim()}
-                >
-                  Adicionar
+                <Button variant="outlined" size="small" onClick={handleAddTag} disabled={!tagInput.trim()}>
+                  {t.add}
                 </Button>
               </Box>
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 {tags.map((tag) => (
-                  <Chip
-                    key={tag}
-                    label={tag}
-                    onDelete={() => handleDeleteTag(tag)}
-                    color="primary"
-                    size="small"
-                  />
+                  <Chip key={tag} label={tag} onDelete={() => handleDeleteTag(tag)} color="primary" size="small" />
                 ))}
               </Stack>
             </Box>
@@ -592,7 +525,7 @@ const response = await axios.post('/api/csr/generate', requestData);
               disabled={loading}
               fullWidth
             >
-              {loading ? 'Gerando...' : 'Gerar CSR'}
+              {loading ? t.csr_generating : t.csr_generate_btn}
             </Button>
           </Stack>
         </Box>
@@ -602,29 +535,14 @@ const response = await axios.post('/api/csr/generate', requestData);
             severity="success"
             sx={{ mt: 3 }}
             action={
-              <Button
-                color="inherit"
-                size="small"
-                startIcon={<Download />}
-                onClick={handleDownload}
-              >
-                Download CSR
+              <Button color="inherit" size="small" startIcon={<Download />} onClick={handleDownload}>
+                {t.download} CSR
               </Button>
             }
           >
-            <Typography variant="subtitle2" gutterBottom>
-              CSR gerado com sucesso!
-            </Typography>
-            <Typography variant="body2">
-              Nome: <strong>{generatedCSR.custom_name}</strong>
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              <strong>Próximos passos:</strong> Envie este CSR para sua Autoridade Certificadora (CA) 
-              para obter seu certificado SSL/TLS.
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              <strong>Nota:</strong> Uma chave privada correspondente também foi gerada e salva automaticamente.
-            </Typography>
+            <Typography variant="subtitle2" gutterBottom>{t.csr_success_title}</Typography>
+            <Typography variant="body2">{t.name}: <strong>{generatedCSR.custom_name}</strong></Typography>
+            <Typography variant="body2" sx={{ mt: 1 }}>{t.csr_key_generated}</Typography>
           </Alert>
         )}
       </Paper>
@@ -632,23 +550,14 @@ const response = await axios.post('/api/csr/generate', requestData);
       <Paper sx={{ p: 3, mt: 3, bgcolor: 'action.hover' }}>
         <Typography variant="h6" gutterBottom>
           <Info sx={{ verticalAlign: 'middle', mr: 1 }} />
-          Sobre SAN (Subject Alternative Names)
+          {t.csr_info_section}
         </Typography>
         <Typography variant="body2" paragraph>
-          SAN permite que um único certificado seja válido para múltiplos domínios e subdomínios.
-        </Typography>
-        <Typography variant="body2" component="div">
-          <strong>Exemplos comuns:</strong>
-          <ul>
-            <li>CN: exemplo.com.br + SAN: *.exemplo.com.br (cobre o domínio principal e todos os subdomínios)</li>
-            <li>CN: www.exemplo.com + SAN: exemplo.com, api.exemplo.com (múltiplos domínios específicos)</li>
-            <li>CN: *.app.com + SAN: app.com, *.api.app.com (wildcard principal + domínio base + outro wildcard)</li>
-          </ul>
+          SAN (Subject Alternative Names) allows a single certificate to be valid for multiple domains and subdomains.
         </Typography>
         <Alert severity="info" sx={{ mt: 2 }}>
           <Typography variant="body2">
-            <strong>Dica:</strong> A maioria das CAs modernas adiciona automaticamente o CN à lista SAN, 
-            mas é uma boa prática incluí-lo explicitamente.
+            <strong>{t.ac_san_hint}</strong>
           </Typography>
         </Alert>
       </Paper>

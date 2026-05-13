@@ -34,6 +34,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface FileStats {
   private_key: number;
@@ -53,6 +54,7 @@ interface ExpiringCertificate {
 }
 
 const Dashboard: React.FC = () => {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [stats, setStats] = useState<FileStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,42 +89,42 @@ const Dashboard: React.FC = () => {
 
   const cards = [
     {
-      title: 'Chaves Privadas',
+      title: t.dash_keys,
       value: stats?.private_key || 0,
       icon: <VpnKey fontSize="large" />,
       color: '#4caf50',
       path: '/files?tab=1',
     },
     {
-      title: 'Certificados',
+      title: t.dash_certs,
       value: stats?.certificate || 0,
       icon: <Badge fontSize="large" />,
       color: '#2196f3',
       path: '/files?tab=2',
     },
     {
-      title: 'CA Bundles',
+      title: t.dash_bundles,
       value: stats?.ca_bundle || 0,
       icon: <Folder fontSize="large" />,
       color: '#ff9800',
       path: '/files?tab=3',
     },
     {
-      title: 'CSRs',
+      title: t.dash_csrs,
       value: stats?.csr || 0,
       icon: <Description fontSize="large" />,
       color: '#9c27b0',
       path: '/files?tab=4',
     },
     {
-      title: 'Arquivos PFX',
+      title: t.dash_pfxs,
       value: stats?.pfx || 0,
       icon: <FolderZip fontSize="large" />,
       color: '#f44336',
       path: '/files?tab=5',
     },
     {
-      title: 'Total de Arquivos',
+      title: t.dash_total,
       value: stats?.total || 0,
       icon: <TrendingUp fontSize="large" />,
       color: '#00bcd4',
@@ -135,9 +137,9 @@ const Dashboard: React.FC = () => {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" component="h1">
-          Dashboard
+          {t.dashboard_title}
         </Typography>
-        <Tooltip title="Atualizar estatísticas">
+        <Tooltip title={t.dash_refresh}>
           <IconButton onClick={loadStats} disabled={loading}>
             <Refresh />
           </IconButton>
@@ -147,63 +149,56 @@ const Dashboard: React.FC = () => {
       {loading && <LinearProgress sx={{ mb: 2 }} />}
 
       {/* Certificate Expiry Alert Panel */}
-      <Paper sx={{ mb: 3, p: 2 }}>
+      <Box sx={{ mb: 3 }}>
         {expiringCerts.length === 0 ? (
-          <Alert severity="success" icon={<CheckCircle />}>
-            <AlertTitle>Tudo em ordem!</AlertTitle>
-            Seus certificados estão longe de vencer.
-          </Alert>
+          <Paper sx={{ p: 2 }}>
+            <Alert severity="success" icon={<CheckCircle />}>
+              <AlertTitle>{t.dash_ok_title}</AlertTitle>
+              {t.dash_ok_msg}
+            </Alert>
+          </Paper>
         ) : (
-          <Alert 
-            severity="warning" 
-            icon={<Warning />}
-            action={
-              <IconButton
-                color="inherit"
-                size="small"
-                onClick={() => setShowExpiringDetails(!showExpiringDetails)}
-              >
-                {showExpiringDetails ? <ExpandLess /> : <ExpandMore />}
-              </IconButton>
+          expiringCerts.map((cert) => {
+            let severity: "error" | "warning" | "info" = "info";
+            let title = "";
+            let message = "";
+            
+            if (cert.days_until_expiry < 0) {
+               severity = "error";
+               title = t.dash_exp_title;
+               message = t.dash_expired_msg.replace('{name}', cert.custom_name);
+            } else if (cert.days_until_expiry === 0) {
+               severity = "error";
+               title = t.dash_today_title;
+               message = t.dash_today_msg.replace('{name}', cert.custom_name);
+            } else if (cert.days_until_expiry <= 3) {
+               severity = "error";
+               title = t.dash_crit_title;
+               message = t.dash_days_msg.replace('{name}', cert.custom_name).replace('{days}', String(cert.days_until_expiry));
+            } else if (cert.days_until_expiry <= 7) {
+               severity = "warning";
+               title = t.dash_urg_title;
+               message = t.dash_days_msg.replace('{name}', cert.custom_name).replace('{days}', String(cert.days_until_expiry));
+            } else {
+               severity = "warning";
+               title = t.dash_warn_title;
+               message = t.dash_days_msg.replace('{name}', cert.custom_name).replace('{days}', String(cert.days_until_expiry));
             }
-          >
-            <AlertTitle>Atenção! Certificados próximos do vencimento</AlertTitle>
-            {expiringCerts.length === 1 
-              ? 'Você tem 1 certificado que vencerá em breve.'
-              : `Você tem ${expiringCerts.length} certificados que vencerão em breve.`}
-          </Alert>
-        )}
-        
-        <Collapse in={showExpiringDetails && expiringCerts.length > 0}>
-          <List sx={{ mt: 2 }}>
-            {expiringCerts.map((cert) => (
-              <ListItem 
-                key={cert.id}
-                sx={{ 
-                  bgcolor: 'action.hover', 
-                  borderRadius: 1, 
-                  mb: 1,
-                  cursor: 'pointer',
-                }}
-                onClick={() => navigate('/files?type=certificate')}
+
+            return (
+              <Alert 
+                key={cert.id} 
+                severity={severity} 
+                sx={{ mb: 1.5, cursor: 'pointer', boxShadow: 1 }} 
+                onClick={() => navigate('/files')}
               >
-                <ListItemIcon>
-                  <Badge color="warning" />
-                </ListItemIcon>
-                <ListItemText
-                  primary={cert.custom_name}
-                  secondary={`Vence em ${new Date(cert.expiry_date).toLocaleDateString()} (${cert.days_until_expiry} dias)`}
-                />
-                <Chip 
-                  label={cert.days_until_expiry <= 7 ? 'URGENTE' : 'ATENÇÃO'}
-                  color={cert.days_until_expiry <= 7 ? 'error' : 'warning'}
-                  size="small"
-                />
-              </ListItem>
-            ))}
-          </List>
-        </Collapse>
-      </Paper>
+                <AlertTitle>{title}</AlertTitle>
+                {message}
+              </Alert>
+            );
+          })
+        )}
+      </Box>
 
       <Grid container spacing={3} mb={4}>
         {cards.map((card, index) => (

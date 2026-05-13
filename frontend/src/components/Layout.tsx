@@ -10,7 +10,7 @@ import {
 import {
   Menu as MenuIcon, Dashboard, VpnKey, Description, FolderZip,
   Folder, CheckCircle, Logout, Person, Lock, Key, Shield,
-  AdminPanelSettings, DarkMode, LightMode,
+  AdminPanelSettings, DarkMode, LightMode, FolderShared
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useThemeMode } from '../contexts/ThemeContext';
@@ -47,6 +47,7 @@ const Layout: React.FC = () => {
     { text: t.nav_generate_pfx, icon: <FolderZip />, path: '/generate-pfx' },
     { text: t.nav_ssh_keys, icon: <Key />, path: '/generate-ssh-key' },
     { text: t.nav_app_certs, icon: <Shield />, path: '/app-certificates' },
+    { text: t.nav_shared_files, icon: <FolderShared />, path: '/shared' },
     { text: t.nav_files, icon: <Folder />, path: '/files' },
     { text: t.nav_validation, icon: <CheckCircle />, path: '/validation' },
     ...(isAdmin ? [{ text: t.nav_users, icon: <AdminPanelSettings />, path: '/user-management' }] : []),
@@ -61,17 +62,17 @@ const Layout: React.FC = () => {
   };
 
   const handleChangePwd = async () => {
-    if (newPwd !== confirmPwd) { toast.error('As senhas não coincidem'); return; }
-    if (newPwd.length < 8) { toast.error('A nova senha deve ter pelo menos 8 caracteres'); return; }
+    if (newPwd !== confirmPwd) { toast.error(t.pwd_mismatch_err); return; }
+    if (newPwd.length < 8) { toast.error(t.pwd_min_err); return; }
     try {
       setChangePwdLoading(true);
       await axios.post('/api/auth/change-password', {
         current_password: currentPwd, new_password: newPwd,
       });
-      toast.success('Senha alterada com sucesso!');
+      toast.success(t.pwd_changed);
       setChangePwdOpen(false);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Erro ao alterar senha');
+      toast.error(err.response?.data?.detail || t.pwd_change_err);
     } finally {
       setChangePwdLoading(false);
     }
@@ -144,21 +145,20 @@ const Layout: React.FC = () => {
       >
         <Toolbar>
           <IconButton
-            color="inherit"
             edge="start"
             onClick={() => setMobileOpen(!mobileOpen)}
-            sx={{ mr: 2, display: { sm: 'none' } }}
+            sx={{ mr: 2, display: { sm: 'none' }, color: 'text.primary' }}
           >
             <MenuIcon />
           </IconButton>
 
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Gerenciador de Certificados SSL/TLS
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, color: 'text.primary' }}>
+            {t.app_title}
           </Typography>
 
           {/* Language selector */}
           <Tooltip title="Idioma / Language">
-            <IconButton onClick={e => setLangAnchor(e.currentTarget)} sx={{ fontSize: 20 }}>
+            <IconButton onClick={e => setLangAnchor(e.currentTarget)} sx={{ fontSize: 20, color: 'text.primary' }}>
               {currentFlag}
             </IconButton>
           </Tooltip>
@@ -182,7 +182,7 @@ const Layout: React.FC = () => {
 
           {/* Theme toggle */}
           <Tooltip title={mode === 'dark' ? t.theme_light : t.theme_dark}>
-            <IconButton color="inherit" onClick={toggleTheme} sx={{ ml: 0.5 }}>
+            <IconButton onClick={toggleTheme} sx={{ ml: 0.5, color: 'text.primary' }}>
               {mode === 'dark' ? <LightMode /> : <DarkMode />}
             </IconButton>
           </Tooltip>
@@ -245,14 +245,14 @@ const Layout: React.FC = () => {
           <Dialog open={changePwdOpen} onClose={() => setChangePwdOpen(false)} maxWidth="xs" fullWidth>
             <DialogTitle>{t.change_password}</DialogTitle>
             <DialogContent>
-              <TextField label="Senha Atual" type="password" fullWidth margin="normal" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} />
-              <TextField label="Nova Senha" type="password" fullWidth margin="normal" value={newPwd} onChange={e => setNewPwd(e.target.value)} helperText="Mínimo 8 caracteres" />
-              <TextField label="Confirmar Nova Senha" type="password" fullWidth margin="normal" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} />
+              <TextField label={t.pwd_current} type="password" fullWidth margin="normal" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} />
+              <TextField label={t.pwd_new} type="password" fullWidth margin="normal" value={newPwd} onChange={e => setNewPwd(e.target.value)} helperText={t.pwd_min_chars} />
+              <TextField label={t.pwd_confirm} type="password" fullWidth margin="normal" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} />
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setChangePwdOpen(false)} disabled={changePwdLoading}>{t.cancel}</Button>
               <Button onClick={handleChangePwd} variant="contained" disabled={changePwdLoading || !currentPwd || !newPwd || !confirmPwd}>
-                {changePwdLoading ? 'Salvando...' : t.save}
+                {changePwdLoading ? t.pwd_saving : t.save}
               </Button>
             </DialogActions>
           </Dialog>

@@ -6,8 +6,9 @@ from app.models import FileType
 # ─── Auth / User ──────────────────────────────────────────────────────────────
 
 class UserBase(BaseModel):
-    email: EmailStr
+    email: str
     username: str
+    full_name: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -49,6 +50,7 @@ class UserAdminView(BaseModel):
     id: int
     email: str
     username: str
+    full_name: Optional[str] = None
     role: str
     is_active: bool
     force_password_change: bool
@@ -61,8 +63,11 @@ class UserAdminView(BaseModel):
 class UserAdminCreate(BaseModel):
     email: EmailStr
     username: str
-    password: str
+    full_name: Optional[str] = None
     role: str = "user"
+
+class UserAdminCreateResponse(UserAdminView):
+    generated_password: str
 
 class UserAdminUpdate(BaseModel):
     email: Optional[EmailStr] = None
@@ -190,3 +195,23 @@ class SelfSignedCertCreate(BaseModel):
 class SelfSignedCertResponse(BaseModel):
     certificate: FileResponse
     private_key: FileResponse
+
+# ─── Shares ───────────────────────────────────────────────────────────────────
+
+class ShareCreate(BaseModel):
+    file_id: int
+    target_email: str
+
+class SharedFileResponse(BaseModel):
+    id: int
+    file_id: int
+    owner_id: int
+    shared_with_user_id: int
+    created_at: datetime
+    
+    file: FileResponse
+    owner_email: str
+    shared_with_email: str
+
+    class Config:
+        from_attributes = True

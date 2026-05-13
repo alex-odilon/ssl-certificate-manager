@@ -24,6 +24,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     username = Column(String, unique=True, index=True, nullable=False)
+    full_name = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="user", nullable=False)          # "admin" | "user"
     is_active = Column(Boolean, default=True, nullable=False)
@@ -87,3 +88,16 @@ class SshKeyPair(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     owner = relationship("User", back_populates="ssh_key_pairs")
+
+class SharedFile(Base):
+    __tablename__ = "shared_files"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    file_id = Column(Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    shared_with_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    file = relationship("File", backref="shares")
+    owner = relationship("User", foreign_keys=[owner_id])
+    shared_with_user = relationship("User", foreign_keys=[shared_with_user_id])

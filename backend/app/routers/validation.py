@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastA
 from sqlalchemy.orm import Session
 from typing import Optional
 import aiofiles
+from fastapi.concurrency import run_in_threadpool
 
 from app.database import get_db
 from app.models import User, File
@@ -29,7 +30,16 @@ async def validate_file(
     """Validate a file (certificate, key, CSR, or PFX)."""
     try:
         if file:
-            content = await file.read()
+            # Read file with size limit (1MB)
+            MAX_SIZE = 1 * 1024 * 1024
+            content = b""
+            while True:
+                chunk = await file.read(64 * 1024)
+                if not chunk:
+                    break
+                content += chunk
+                if len(content) > MAX_SIZE:
+                    raise HTTPException(status_code=413, detail="File too large (max 1MB)")
             filename = file.filename.lower()
         elif file_id:
             db_file = db.query(File).filter(
@@ -50,7 +60,7 @@ async def validate_file(
         if filename.endswith('.pfx') or filename.endswith('.p12'):
             if not password:
                 raise HTTPException(status_code=400, detail="Password required for PFX validation")
-            result = validate_pfx(content, password)
+            result = await run_in_threadpool(validate_pfx, content, password)
             file_type = "PFX/PKCS12"
         elif filename.endswith('.crt') or filename.endswith('.cer'):
             result = validate_certificate(content)

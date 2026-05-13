@@ -72,8 +72,16 @@ async def upload_key(
 ):
     """Upload a private key file"""
     try:
-        # Read file content
-        content = await file.read()
+        # Read file content with size limit (1MB)
+        MAX_SIZE = 1 * 1024 * 1024
+        content = b""
+        while True:
+            chunk = await file.read(64 * 1024)
+            if not chunk:
+                break
+            content += chunk
+            if len(content) > MAX_SIZE:
+                raise HTTPException(status_code=413, detail="File too large (max 1MB)")
         
         # Validate private key
         validation = validate_private_key(content)

@@ -43,6 +43,7 @@ import {
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ValidationResult {
   file_type: string;
@@ -60,6 +61,9 @@ interface FileOption {
 }
 
 const Validation: React.FC = () => {
+  const { t, lang } = useLanguage();
+  const localeStr = lang === 'pt-BR' ? 'pt-BR' : lang === 'es' ? 'es-ES' : 'en-US';
+
   const [validationMode, setValidationMode] = useState<'upload' | 'existing'>('upload');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
@@ -72,16 +76,11 @@ const Validation: React.FC = () => {
   const [loadingPassword, setLoadingPassword] = useState(false);
 
   useEffect(() => {
-    if (validationMode === 'existing') {
-      loadExistingFiles();
-    }
+    if (validationMode === 'existing') loadExistingFiles();
   }, [validationMode]);
 
-  // Load PFX password automatically when a PFX file is selected
   useEffect(() => {
-    if (selectedFileData && selectedFileData.file_type === 'pfx') {
-      loadPfxPassword();
-    }
+    if (selectedFileData && selectedFileData.file_type === 'pfx') loadPfxPassword();
   }, [selectedFileData]);
 
   const loadExistingFiles = async () => {
@@ -89,20 +88,18 @@ const Validation: React.FC = () => {
       const response = await axios.get('/api/files/');
       setExistingFiles(response.data);
     } catch (error) {
-      toast.error('Erro ao carregar arquivos');
+      toast.error(t.val_err_load);
     }
   };
 
   const loadPfxPassword = async () => {
     if (!selectedFileData || selectedFileData.file_type !== 'pfx') return;
-    
     try {
       setLoadingPassword(true);
       const response = await axios.get(`/api/pfx/${selectedFileData.id}/password`);
       setPfxPassword(response.data.password);
-      toast.info('Senha do PFX carregada automaticamente');
     } catch {
-      // silent – password load is best-effort
+      // silent
     } finally {
       setLoadingPassword(false);
     }
@@ -113,21 +110,21 @@ const Validation: React.FC = () => {
     return existingFiles.filter(file => file.file_type === fileTypeFilter);
   };
 
-  const getFileLabel = (file: FileOption) => {
-    const date = new Date(file.created_at).toLocaleDateString();
-    const type = getFileTypeLabel(file.file_type);
-    return `${file.custom_name} - ${type} (${date})`;
-  };
-
   const getFileTypeLabel = (fileType: string) => {
     const labels: Record<string, string> = {
-      private_key: 'Chave Privada',
-      certificate: 'Certificado',
-      ca_bundle: 'CA Bundle',
-      csr: 'CSR',
-      pfx: 'PFX',
+      private_key: t.files_type_private_key,
+      certificate: t.files_type_cert,
+      ca_bundle: t.files_type_ca_bundle,
+      csr: t.files_type_csr,
+      pfx: t.files_type_pfx,
     };
     return labels[fileType] || fileType;
+  };
+
+  const getFileLabel = (file: FileOption) => {
+    const date = new Date(file.created_at).toLocaleDateString(localeStr);
+    const type = getFileTypeLabel(file.file_type);
+    return `${file.custom_name} - ${type} (${date})`;
   };
 
   const onDrop = (acceptedFiles: File[]) => {
@@ -151,30 +148,24 @@ const Validation: React.FC = () => {
     try {
       setLoading(true);
       const formData = new FormData();
-
       if (validationMode === 'upload' && selectedFile) {
         formData.append('file', selectedFile);
       } else if (validationMode === 'existing' && selectedFileId) {
         formData.append('file_id', selectedFileId.toString());
       }
-
-      if (pfxPassword) {
-        formData.append('password', pfxPassword);
-      }
+      if (pfxPassword) formData.append('password', pfxPassword);
 
       const response = await axios.post('/api/validation/validate', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-
       setValidationResult(response.data);
-      
       if (response.data.is_valid) {
-        toast.success('Arquivo validado com sucesso!');
+        toast.success(t.val_valid);
       } else {
-        toast.error('Arquivo inválido');
+        toast.error(t.val_invalid);
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Erro ao validar arquivo');
+      toast.error(error.response?.data?.detail || t.val_err_validate);
     } finally {
       setLoading(false);
     }
@@ -182,12 +173,11 @@ const Validation: React.FC = () => {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success('Copiado para a área de transferência!');
+    toast.success(t.copy);
   };
 
   const renderValidationDetails = () => {
     if (!validationResult || !validationResult.details) return null;
-
     const details = validationResult.details;
 
     switch (validationResult.file_type) {
@@ -195,33 +185,20 @@ const Validation: React.FC = () => {
         return (
           <List>
             <ListItem>
-              <ListItemText
-                primary="Common Name"
-                secondary={details.common_name}
-                secondaryTypographyProps={{ 
-                  component: 'div',
-                  sx: { display: 'flex', alignItems: 'center', gap: 1 }
-                }}
-              />
+              <ListItemText primary="Common Name" secondary={details.common_name} />
               <IconButton size="small" onClick={() => copyToClipboard(details.common_name)}>
                 <ContentCopy fontSize="small" />
               </IconButton>
             </ListItem>
             <ListItem>
-              <ListItemText
-                primary="Válido de"
-                secondary={new Date(details.not_before).toLocaleString()}
-              />
+              <ListItemText primary="Valid from" secondary={new Date(details.not_before).toLocaleString(localeStr)} />
+            </ListItem>
+            <ListItem>
+              <ListItemText primary="Valid until" secondary={new Date(details.not_after).toLocaleString(localeStr)} />
             </ListItem>
             <ListItem>
               <ListItemText
-                primary="Válido até"
-                secondary={new Date(details.not_after).toLocaleString()}
-              />
-            </ListItem>
-            <ListItem>
-              <ListItemText
-                primary="Dias até expirar"
+                primary="Days until expiry"
                 secondary={
                   <Chip
                     label={details.days_until_expiry}
@@ -233,17 +210,11 @@ const Validation: React.FC = () => {
             </ListItem>
             {details.san && details.san.length > 0 && (
               <ListItem>
-                <ListItemText
-                  primary="SANs (Subject Alternative Names)"
-                  secondary={details.san.join(', ')}
-                />
+                <ListItemText primary="SANs (Subject Alternative Names)" secondary={details.san.join(', ')} />
               </ListItem>
             )}
             <ListItem>
-              <ListItemText
-                primary="Serial Number"
-                secondary={details.serial_number}
-              />
+              <ListItemText primary="Serial Number" secondary={details.serial_number} />
             </ListItem>
           </List>
         );
@@ -252,16 +223,13 @@ const Validation: React.FC = () => {
         return (
           <List>
             <ListItem>
-              <ListItemText primary="Tipo" secondary={details.key_type} />
+              <ListItemText primary={t.type} secondary={details.key_type} />
             </ListItem>
             <ListItem>
-              <ListItemText primary="Tamanho" secondary={`${details.key_size} bits`} />
+              <ListItemText primary={t.gk_success_size} secondary={`${details.key_size} bits`} />
             </ListItem>
             <ListItem>
-              <ListItemText
-                primary="Modulus (primeiros 50 caracteres)"
-                secondary={details.modulus}
-              />
+              <ListItemText primary="Modulus" secondary={details.modulus} />
             </ListItem>
           </List>
         );
@@ -292,36 +260,12 @@ const Validation: React.FC = () => {
                 />
               </ListItem>
             )}
-            {details.extensions && Object.keys(details.extensions).length > 0 && (
-              <>
-                <Divider sx={{ my: 1 }} />
-                <ListItem>
-                  <ListItemText 
-                    primary="Extensões Solicitadas"
-                    secondary={
-                      <Box sx={{ mt: 1 }}>
-                        {Object.entries(details.extensions).map(([key, value]) => (
-                          <Box key={key} sx={{ mb: 1 }}>
-                            <Typography variant="caption" color="text.secondary">
-                              {key}:
-                            </Typography>
-                            <Typography variant="body2">
-                              {Array.isArray(value) ? (value as string[]).join(', ') : String(value)}
-                            </Typography>
-                          </Box>
-                        ))}
-                      </Box>
-                    }
-                  />
-                </ListItem>
-              </>
-            )}
             <ListItem>
               <ListItemText
-                primary="Assinatura válida"
+                primary="Valid signature"
                 secondary={
                   <Chip
-                    label={details.is_signature_valid ? 'Sim' : 'Não'}
+                    label={details.is_signature_valid ? 'Yes' : 'No'}
                     color={details.is_signature_valid ? 'success' : 'error'}
                     size="small"
                   />
@@ -339,25 +283,18 @@ const Validation: React.FC = () => {
       case 'PFX/PKCS12':
         return (
           <Box>
-            <Alert severity="success" sx={{ mb: 2 }}>
-              Senha do PFX está correta!
-            </Alert>
+            <Alert severity="success" sx={{ mb: 2 }}>PFX password is correct!</Alert>
             {details.certificate_info && (
               <>
-                <Typography variant="subtitle1" gutterBottom>
-                  Informações do Certificado:
-                </Typography>
+                <Typography variant="subtitle1" gutterBottom>Certificate Information:</Typography>
                 <List>
                   <ListItem>
-                    <ListItemText
-                      primary="Common Name"
-                      secondary={details.certificate_info.common_name}
-                    />
+                    <ListItemText primary="Common Name" secondary={details.certificate_info.common_name} />
                   </ListItem>
                   <ListItem>
                     <ListItemText
-                      primary="Válido até"
-                      secondary={new Date(details.certificate_info.not_after).toLocaleString()}
+                      primary="Valid until"
+                      secondary={new Date(details.certificate_info.not_after).toLocaleString(localeStr)}
                     />
                   </ListItem>
                 </List>
@@ -369,7 +306,7 @@ const Validation: React.FC = () => {
       default:
         return (
           <Typography variant="body2" color="text.secondary">
-            Tipo de arquivo: {validationResult.file_type}
+            {t.type}: {validationResult.file_type}
           </Typography>
         );
     }
@@ -388,12 +325,8 @@ const Validation: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" component="h1" gutterBottom>
-        Validar Arquivos
-      </Typography>
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Valide certificados, chaves privadas, CSRs e arquivos PFX sem armazená-los.
-      </Typography>
+      <Typography variant="h4" component="h1" gutterBottom>{t.val_title}</Typography>
+      <Typography variant="body1" color="text.secondary" paragraph>{t.val_subtitle}</Typography>
 
       <Paper sx={{ p: 4, mt: 3 }}>
         <FormControl component="fieldset">
@@ -409,16 +342,8 @@ const Validation: React.FC = () => {
               setPfxPassword('');
             }}
           >
-            <FormControlLabel
-              value="upload"
-              control={<Radio />}
-              label="Upload de arquivo"
-            />
-            <FormControlLabel
-              value="existing"
-              control={<Radio />}
-              label="Arquivo existente"
-            />
+            <FormControlLabel value="upload" control={<Radio />} label={t.val_mode_upload} />
+            <FormControlLabel value="existing" control={<Radio />} label={t.val_mode_existing} />
           </RadioGroup>
         </FormControl>
 
@@ -441,72 +366,61 @@ const Validation: React.FC = () => {
               <CloudUpload sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
               {selectedFile ? (
                 <Typography variant="body1">
-                  Arquivo selecionado: <strong>{selectedFile.name}</strong>
+                  {t.val_file_selected_prefix} <strong>{selectedFile.name}</strong>
                 </Typography>
               ) : (
                 <>
-                  <Typography variant="body1" gutterBottom>
-                    Arraste um arquivo aqui ou clique para selecionar
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Formatos aceitos: .pem, .key, .crt, .cer, .csr, .pfx, .p12
-                  </Typography>
+                  <Typography variant="body1" gutterBottom>{t.val_upload_hint}</Typography>
+                  <Typography variant="caption" color="text.secondary">{t.val_accepted_formats}</Typography>
                 </>
               )}
             </Box>
           ) : (
             <Box>
               <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel>Filtrar por tipo</InputLabel>
+                <InputLabel>{t.val_file_type_label}</InputLabel>
                 <Select
                   value={fileTypeFilter}
                   onChange={(e) => setFileTypeFilter(e.target.value)}
-                  label="Filtrar por tipo"
+                  label={t.val_file_type_label}
                 >
-                  <MenuItem value="all">Todos os tipos</MenuItem>
+                  <MenuItem value="all">{t.val_file_all}</MenuItem>
                   <MenuItem value="private_key">
                     <Box display="flex" alignItems="center" gap={1}>
-                      <VpnKey fontSize="small" />
-                      <span>Chaves Privadas</span>
+                      <VpnKey fontSize="small" /><span>{t.files_type_private_key}</span>
                     </Box>
                   </MenuItem>
                   <MenuItem value="certificate">
                     <Box display="flex" alignItems="center" gap={1}>
-                      <Badge fontSize="small" />
-                      <span>Certificados</span>
+                      <Badge fontSize="small" /><span>{t.files_type_cert}</span>
                     </Box>
                   </MenuItem>
                   <MenuItem value="ca_bundle">
                     <Box display="flex" alignItems="center" gap={1}>
-                      <Folder fontSize="small" />
-                      <span>CA Bundles</span>
+                      <Folder fontSize="small" /><span>{t.files_type_ca_bundle}</span>
                     </Box>
                   </MenuItem>
                   <MenuItem value="csr">
                     <Box display="flex" alignItems="center" gap={1}>
-                      <Description fontSize="small" />
-                      <span>CSRs</span>
+                      <Description fontSize="small" /><span>{t.files_type_csr}</span>
                     </Box>
                   </MenuItem>
                   <MenuItem value="pfx">
                     <Box display="flex" alignItems="center" gap={1}>
-                      <FolderZip fontSize="small" />
-                      <span>PFX</span>
+                      <FolderZip fontSize="small" /><span>{t.files_type_pfx}</span>
                     </Box>
                   </MenuItem>
                 </Select>
               </FormControl>
-              
+
               <Autocomplete
                 options={getFilteredFiles()}
                 getOptionLabel={getFileLabel}
                 value={selectedFileData}
-                onChange={(event, newValue) => {
+                onChange={(_event, newValue) => {
                   setSelectedFileData(newValue);
                   setSelectedFileId(newValue?.id || null);
-                  if (!newValue || newValue.file_type !== 'pfx') {
-                    setPfxPassword('');
-                  }
+                  if (!newValue || newValue.file_type !== 'pfx') setPfxPassword('');
                 }}
                 renderOption={(props, option) => (
                   <Box component="li" {...props}>
@@ -515,7 +429,7 @@ const Validation: React.FC = () => {
                       <Box flex={1}>
                         <Typography variant="body2">{option.custom_name}</Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {getFileTypeLabel(option.file_type)} • {new Date(option.created_at).toLocaleDateString()}
+                          {getFileTypeLabel(option.file_type)} • {new Date(option.created_at).toLocaleDateString(localeStr)}
                           {option.description && ` • ${option.description}`}
                         </Typography>
                       </Box>
@@ -525,14 +439,12 @@ const Validation: React.FC = () => {
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Selecione um arquivo"
-                    placeholder="Digite para buscar..."
+                    label={t.search}
+                    placeholder={`${t.search}...`}
                     InputProps={{
                       ...params.InputProps,
                       startAdornment: (
-                        <InputAdornment position="start">
-                          <Search />
-                        </InputAdornment>
+                        <InputAdornment position="start"><Search /></InputAdornment>
                       ),
                     }}
                   />
@@ -548,16 +460,14 @@ const Validation: React.FC = () => {
             <TextField
               fullWidth
               type="password"
-              label="Senha do PFX"
+              label={t.val_pfx_pwd_label}
               value={pfxPassword}
               onChange={(e) => setPfxPassword(e.target.value)}
-              helperText={loadingPassword ? "Carregando senha..." : "Digite a senha do arquivo PFX"}
+              helperText={loadingPassword ? t.val_pfx_loading_pwd : ''}
               disabled={loadingPassword}
               InputProps={{
                 endAdornment: loadingPassword && (
-                  <InputAdornment position="end">
-                    <CircularProgress size={20} />
-                  </InputAdornment>
+                  <InputAdornment position="end"><CircularProgress size={20} /></InputAdornment>
                 ),
               }}
             />
@@ -573,7 +483,7 @@ const Validation: React.FC = () => {
           disabled={loading || (!selectedFile && !selectedFileId)}
           startIcon={loading ? <CircularProgress size={20} /> : <CheckCircle />}
         >
-          {loading ? 'Validando...' : 'Validar Arquivo'}
+          {loading ? t.val_validating : t.val_validate_btn}
         </Button>
       </Paper>
 
@@ -588,10 +498,10 @@ const Validation: React.FC = () => {
               )}
               <Box>
                 <Typography variant="h6">
-                  {validationResult.is_valid ? 'Arquivo Válido' : 'Arquivo Inválido'}
+                  {validationResult.is_valid ? t.val_valid : t.val_invalid}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Tipo: {validationResult.file_type}
+                  {t.type}: {validationResult.file_type}
                 </Typography>
               </Box>
             </Box>
@@ -610,32 +520,14 @@ const Validation: React.FC = () => {
       <Paper sx={{ p: 3, mt: 3, bgcolor: 'action.hover' }}>
         <Typography variant="h6" gutterBottom>
           <Info sx={{ verticalAlign: 'middle', mr: 1 }} />
-          Sobre a Validação
+          {t.val_cert_details}
         </Typography>
-        <Typography variant="body2" paragraph>
-          Esta ferramenta permite validar arquivos SSL/TLS sem armazená-los no servidor:
-        </Typography>
+        <Typography variant="body2" paragraph>{t.val_subtitle}</Typography>
         <ul>
-          <li>
-            <Typography variant="body2">
-              <strong>Certificados:</strong> Verifica validade, datas de expiração e informações do domínio
-            </Typography>
-          </li>
-          <li>
-            <Typography variant="body2">
-              <strong>Chaves Privadas:</strong> Confirma integridade e exibe informações técnicas
-            </Typography>
-          </li>
-          <li>
-            <Typography variant="body2">
-              <strong>CSRs:</strong> Valida assinatura e exibe dados da solicitação
-            </Typography>
-          </li>
-          <li>
-            <Typography variant="body2">
-              <strong>PFX:</strong> Verifica senha e exibe certificado contido
-            </Typography>
-          </li>
+          <li><Typography variant="body2"><strong>{t.files_type_cert}:</strong> {t.val_cert_details}</Typography></li>
+          <li><Typography variant="body2"><strong>{t.files_type_private_key}:</strong> {t.val_cert_match}</Typography></li>
+          <li><Typography variant="body2"><strong>{t.files_type_csr}:</strong> CSR validation</Typography></li>
+          <li><Typography variant="body2"><strong>{t.files_type_pfx}:</strong> PFX validation</Typography></li>
         </ul>
       </Paper>
     </Box>

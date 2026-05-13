@@ -141,13 +141,15 @@ async def delete_file(
         db.delete(file)
         db.commit()
         
-        # Try to delete the actual file from disk (optional)
+        # Try to delete the actual file from disk
+        import logging
+        logger = logging.getLogger(__name__)
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
         except Exception as e:
-            print(f"Warning: Could not delete file from disk: {e}")
-            # Continue anyway - DB record is already deleted
+            logger.error(f"Erro crítico: Não foi possível deletar arquivo do disco {file_path}: {e}")
+            raise HTTPException(status_code=500, detail="Erro ao deletar o arquivo físico do disco.")
         
         return {"message": "File deleted successfully", "id": file_id}
     except HTTPException:

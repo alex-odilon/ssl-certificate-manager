@@ -9,10 +9,11 @@ import json
 import aiofiles
 
 from app.database import get_db
-from app.models import User, File, FileType
+from app.models import User, File, FileType, PfxPassword
 from app.schemas import FileResponse
 from app.routers.auth import get_current_user
-from app.utils.crypto import validate_certificate
+from app.utils.crypto import validate_certificate, validate_pfx
+from app.routers.pfx import _make_fernet
 from app.config import settings
 
 router = APIRouter()
@@ -33,8 +34,16 @@ async def upload_certificate(
         if file_type not in ['certificate', 'ca_bundle']:
             raise HTTPException(status_code=400, detail="Invalid file type")
         
-        # Read file content
-        content = await file.read()
+        # Read file content with size limit (1MB)
+        MAX_SIZE = 1 * 1024 * 1024
+        content = b""
+        while True:
+            chunk = await file.read(64 * 1024)
+            if not chunk:
+                break
+            content += chunk
+            if len(content) > MAX_SIZE:
+                raise HTTPException(status_code=413, detail="File too large (max 1MB)")
         
         # Validate certificate
         validation = validate_certificate(content)
@@ -114,14 +123,10 @@ async def get_expiring_certificates(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return CERTIFICATE and CA_BUNDLE files expiring within `days` days.
-
-    Works for certificates created by the tool AND imported ones — any file
-    stored as FileType.CERTIFICATE or FileType.CA_BUNDLE.
-    """
+    """Return CERTIFICATE, CA_BUNDLE and PFX files expiring within `days` days."""
     cert_files = db.query(File).filter(
         File.owner_id == current_user.id,
-        File.file_type.in_([FileType.CERTIFICATE, FileType.CA_BUNDLE]),
+        File.file_type.in_([FileType.CERTIFICATE, FileType.CA_BUNDLE, FileType.PFX]),
     ).all()
 
     expiring = []
@@ -134,7 +139,16 @@ async def get_expiring_certificates(
             async with aiofiles.open(cert.file_path, "rb") as f:
                 content = await f.read()
 
-            info = validate_certificate(content)
+            if cert.file_type == FileType.PFX:
+                pfx_password_record = db.query(PfxPassword).filter(PfxPassword.file_id == cert.id).first()
+                if not pfx_password_record:
+                    continue
+                fernet = _make_fernet(settings.SECRET_KEY)
+                password_bytes = fernet.decrypt(pfx_password_record.encrypted_password.encode())
+                password = password_bytes.decode()
+                info = validate_pfx(content, password)
+            else:
+                info = validate_certificate(content)
 
             if not info.get("valid"):
                 continue

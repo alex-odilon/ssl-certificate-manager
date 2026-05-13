@@ -30,6 +30,7 @@ import {
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface UploadDialogProps {
   open: boolean;
@@ -38,6 +39,7 @@ interface UploadDialogProps {
 }
 
 const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess }) => {
+  const { t } = useLanguage();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileType, setFileType] = useState<string>('');
   const [customName, setCustomName] = useState('');
@@ -46,26 +48,22 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
   const [tagInput, setTagInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<any>({});
-  const [keyPassword, setKeyPassword] = useState('');
   const [showPasswordField, setShowPasswordField] = useState(false);
 
   const onDrop = (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       const file = acceptedFiles[0];
       setSelectedFile(file);
-      
-      // Auto-detect file type based on extension
       const extension = file.name.split('.').pop()?.toLowerCase();
       if (extension === 'key' || extension === 'pem') {
-        // Could be private key, certificate, or CA bundle
-        setFileType(''); // Let user choose
+        setFileType('');
       } else if (extension === 'crt' || extension === 'cer') {
         setFileType('certificate');
       } else if (extension === 'csr') {
-        toast.error('CSR deve ser gerado pela plataforma, não importado');
+        toast.error(t.upload_csr_err);
         setSelectedFile(null);
       } else if (extension === 'pfx' || extension === 'p12') {
-        toast.error('PFX deve ser gerado pela plataforma, não importado');
+        toast.error(t.upload_pfx_err);
         setSelectedFile(null);
       }
     }
@@ -92,33 +90,22 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
 
   const validate = () => {
     const newErrors: any = {};
-    
-    if (!selectedFile) {
-      newErrors.file = 'Arquivo é obrigatório';
-    }
-    
-    if (!fileType) {
-      newErrors.fileType = 'Tipo de arquivo é obrigatório';
-    }
-    
+    if (!selectedFile) newErrors.file = t.upload_no_file;
+    if (!fileType) newErrors.fileType = t.upload_type_required;
     if (!customName.trim()) {
-      newErrors.customName = 'Nome personalizado é obrigatório';
+      newErrors.customName = t.upload_custom_name_required;
     } else if (!/^[a-zA-Z0-9_-]+$/.test(customName)) {
-      newErrors.customName = 'Use apenas letras, números, _ e -';
+      newErrors.customName = t.upload_name_pattern;
     }
-    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleUpload = async () => {
-    if (!validate()) {
-      return;
-    }
+    if (!validate()) return;
 
     try {
       setLoading(true);
-      
       const formData = new FormData();
       formData.append('file', selectedFile!);
       formData.append('custom_name', customName);
@@ -134,24 +121,19 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
       }
 
       await axios.post(endpoint, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      toast.success('Arquivo importado com sucesso!');
+      toast.success(t.upload_success);
       onSuccess();
       handleClose();
     } catch (error: any) {
-      console.error('Upload error:', error.response?.data);
-      
-      // Check if it's an encrypted key error
-      if (error.response?.data?.detail?.includes('protegida por senha') || 
+      if (error.response?.data?.detail?.includes('protegida por senha') ||
           error.response?.data?.detail?.includes('encrypted')) {
         setShowPasswordField(true);
-        toast.error('Esta chave privada está protegida por senha. Por favor, remova a senha antes de importar.');
+        toast.error(t.upload_encrypted_key_err);
       } else {
-        toast.error(error.response?.data?.detail || 'Erro ao importar arquivo');
+        toast.error(error.response?.data?.detail || t.upload_err);
       }
     } finally {
       setLoading(false);
@@ -167,7 +149,6 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
       setTags([]);
       setTagInput('');
       setErrors({});
-      setKeyPassword('');
       setShowPasswordField(false);
       onClose();
     }
@@ -175,14 +156,10 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
 
   const getFileTypeIcon = () => {
     switch (fileType) {
-      case 'private_key':
-        return <VpnKey />;
-      case 'certificate':
-        return <Badge />;
-      case 'ca_bundle':
-        return <Folder />;
-      default:
-        return <CloudUpload />;
+      case 'private_key': return <VpnKey />;
+      case 'certificate': return <Badge />;
+      case 'ca_bundle': return <Folder />;
+      default: return <CloudUpload />;
     }
   };
 
@@ -190,16 +167,13 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>
         <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">Importar Arquivo</Typography>
-          <IconButton onClick={handleClose} disabled={loading}>
-            <Close />
-          </IconButton>
+          <Typography variant="h6">{t.upload_title}</Typography>
+          <IconButton onClick={handleClose} disabled={loading}><Close /></IconButton>
         </Box>
       </DialogTitle>
-      
+
       <DialogContent>
         <Stack spacing={3} sx={{ mt: 1 }}>
-          {/* File Upload */}
           <Box
             {...getRootProps()}
             sx={{
@@ -217,16 +191,12 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
             {selectedFile ? (
               <Box display="flex" alignItems="center" justifyContent="center" gap={1}>
                 {getFileTypeIcon()}
-                <Typography variant="body1">
-                  {selectedFile.name}
-                </Typography>
+                <Typography variant="body1">{selectedFile.name}</Typography>
               </Box>
             ) : (
               <>
                 <CloudUpload sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-                <Typography variant="body1" gutterBottom>
-                  Arraste um arquivo aqui ou clique para selecionar
-                </Typography>
+                <Typography variant="body1" gutterBottom>{t.upload_drop_hint}</Typography>
                 <Typography variant="caption" color="text.secondary">
                   Formatos aceitos: .pem, .key, .crt, .cer
                 </Typography>
@@ -234,30 +204,27 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
             )}
           </Box>
           {errors.file && (
-            <Typography variant="caption" color="error">
-              {errors.file}
-            </Typography>
+            <Typography variant="caption" color="error">{errors.file}</Typography>
           )}
 
-          {/* File Type Selection */}
           <FormControl fullWidth error={!!errors.fileType}>
-            <InputLabel>Tipo de Arquivo</InputLabel>
+            <InputLabel>{t.upload_select_type}</InputLabel>
             <Select
               value={fileType}
               onChange={(e) => setFileType(e.target.value)}
-              label="Tipo de Arquivo"
+              label={t.upload_select_type}
               disabled={!selectedFile}
             >
               <MenuItem value="private_key">
                 <Box display="flex" alignItems="center" gap={1}>
                   <VpnKey fontSize="small" />
-                  <span>Chave Privada</span>
+                  <span>{t.files_type_private_key}</span>
                 </Box>
               </MenuItem>
               <MenuItem value="certificate">
                 <Box display="flex" alignItems="center" gap={1}>
                   <Badge fontSize="small" />
-                  <span>Certificado</span>
+                  <span>{t.files_type_cert}</span>
                 </Box>
               </MenuItem>
               <MenuItem value="ca_bundle">
@@ -268,20 +235,15 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
               </MenuItem>
             </Select>
             {errors.fileType && (
-              <Typography variant="caption" color="error">
-                {errors.fileType}
-              </Typography>
+              <Typography variant="caption" color="error">{errors.fileType}</Typography>
             )}
           </FormControl>
 
-          {/* Custom Name */}
           <Box>
             <Box display="flex" alignItems="center" gap={1} mb={1}>
-              <Typography variant="subtitle2">Nome Personalizado</Typography>
-              <Tooltip title="Digite um nome único para identificar este arquivo">
-                <IconButton size="small">
-                  <Info fontSize="small" />
-                </IconButton>
+              <Typography variant="subtitle2">{t.upload_custom_name}</Typography>
+              <Tooltip title={t.upload_custom_name}>
+                <IconButton size="small"><Info fontSize="small" /></IconButton>
               </Tooltip>
             </Box>
             <TextField
@@ -295,37 +257,31 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
             />
           </Box>
 
-          {/* Description */}
           <Box>
-            <Typography variant="subtitle2" gutterBottom>
-              Descrição
-            </Typography>
+            <Typography variant="subtitle2" gutterBottom>{t.upload_desc}</Typography>
             <TextField
               fullWidth
               multiline
               rows={3}
-              placeholder="Adicione uma descrição para este arquivo"
+              placeholder={t.upload_desc}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               disabled={loading}
             />
           </Box>
 
-          {/* Tags */}
           <Box>
             <Box display="flex" alignItems="center" gap={1} mb={1}>
-              <Typography variant="subtitle2">Tags</Typography>
-              <Tooltip title="Adicione tags para facilitar a busca">
-                <IconButton size="small">
-                  <Info fontSize="small" />
-                </IconButton>
+              <Typography variant="subtitle2">{t.tags}</Typography>
+              <Tooltip title={t.tags}>
+                <IconButton size="small"><Info fontSize="small" /></IconButton>
               </Tooltip>
             </Box>
             <Box display="flex" gap={1} mb={1}>
               <TextField
                 fullWidth
                 size="small"
-                placeholder="Digite uma tag e pressione Enter"
+                placeholder={t.upload_tag_placeholder}
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -342,7 +298,7 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
                 onClick={handleAddTag}
                 disabled={!tagInput.trim() || loading}
               >
-                Adicionar
+                {t.add}
               </Button>
             </Box>
             <Stack direction="row" spacing={1} flexWrap="wrap">
@@ -361,34 +317,28 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
 
           {fileType === 'ca_bundle' && (
             <Alert severity="info">
-              <strong>CA Bundle:</strong> Este arquivo contém certificados intermediários 
-              necessários para formar a cadeia completa de certificação.
+              <strong>CA Bundle:</strong> {t.files_type_ca_bundle}
             </Alert>
           )}
-          
+
           {fileType === 'private_key' && (
             <>
               <Alert severity="warning">
-                <strong>Importante:</strong> A chave privada deve estar sem senha. 
-                Se sua chave estiver protegida, remova a senha com o comando:<br/>
+                <strong>{t.upload_btn}:</strong> {t.upload_encrypted_key_err}<br />
                 <code style={{ backgroundColor: '#333', padding: '4px 8px', borderRadius: '4px', display: 'block', marginTop: '8px' }}>
                   openssl rsa -in chave_com_senha.key -out chave_sem_senha.key
                 </code>
               </Alert>
-              
+
               {showPasswordField && (
                 <Alert severity="error" sx={{ mt: 2 }}>
                   <Typography variant="subtitle2" gutterBottom>
-                    Chave Privada Protegida Detectada
-                  </Typography>
-                  <Typography variant="body2" paragraph>
-                    Esta chave está protegida por senha e não pode ser importada diretamente.
-                    Por favor, siga estes passos:
+                    {t.upload_encrypted_key_err}
                   </Typography>
                   <ol style={{ margin: '8px 0', paddingLeft: '20px' }}>
                     <li>Abra um terminal</li>
                     <li>Execute o comando acima para remover a senha</li>
-                    <li>Use o arquivo resultante (chave_sem_senha.key) para importar</li>
+                    <li>Use o arquivo resultante para importar</li>
                   </ol>
                 </Alert>
               )}
@@ -400,15 +350,13 @@ const UploadDialog: React.FC<UploadDialogProps> = ({ open, onClose, onSuccess })
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={handleClose} disabled={loading}>
-          Cancelar
-        </Button>
+        <Button onClick={handleClose} disabled={loading}>{t.cancel}</Button>
         <Button
           onClick={handleUpload}
           variant="contained"
           disabled={loading || !selectedFile || !fileType || !customName}
         >
-          {loading ? 'Importando...' : 'Importar'}
+          {loading ? t.upload_uploading : t.upload_btn}
         </Button>
       </DialogActions>
     </Dialog>

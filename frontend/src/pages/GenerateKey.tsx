@@ -27,6 +27,7 @@ import {
 import { useForm } from 'react-hook-form';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface GenerateKeyForm {
   custom_name: string;
@@ -35,6 +36,7 @@ interface GenerateKeyForm {
 }
 
 const GenerateKey: React.FC = () => {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [generatedKey, setGeneratedKey] = useState<any>(null);
   const [tags, setTags] = useState<string[]>([]);
@@ -79,13 +81,12 @@ const GenerateKey: React.FC = () => {
         key_type: keyType,
         key_size: keySize,
       });
-      
       setGeneratedKey(response.data);
-      toast.success('Chave privada gerada com sucesso!');
+      toast.success(t.gk_success_gen);
       reset();
       setTags([]);
     } catch (error) {
-      toast.error('Erro ao gerar chave privada');
+      toast.error(t.gk_err_gen);
     } finally {
       setLoading(false);
     }
@@ -93,12 +94,10 @@ const GenerateKey: React.FC = () => {
 
   const handleDownload = async () => {
     if (!generatedKey) return;
-    
     try {
       const response = await axios.get(`/api/keys/${generatedKey.id}/download`, {
         responseType: 'blob',
       });
-      
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -106,30 +105,28 @@ const GenerateKey: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      
-      toast.success('Download iniciado!');
+      toast.success(t.gk_success_dl);
     } catch (error) {
-      toast.error('Erro ao fazer download');
+      toast.error(t.gk_err_dl);
     }
   };
 
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom>
-        Gerar Chave Privada
+        {t.gk_title}
       </Typography>
       <Typography variant="body1" color="text.secondary" paragraph>
-        Gere uma nova chave privada para uso em certificados SSL/TLS. Suporta RSA (2048/3072/4096 bits) e Elliptic Curve (P-256/P-384).
+        {t.gk_subtitle}
       </Typography>
 
       <Paper sx={{ p: 4, mt: 3 }}>
         <Box component="form" onSubmit={handleSubmit(onSubmit)}>
           <Stack spacing={3}>
-            {/* Key Type + Size */}
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Typography variant="subtitle1">Tipo de Chave</Typography>
-                <Tooltip title="RSA é o padrão mais compatível. EC (Elliptic Curve) é mais moderno e eficiente.">
+                <Typography variant="subtitle1">{t.gk_key_type_title}</Typography>
+                <Tooltip title={t.gk_key_type_hint}>
                   <IconButton size="small"><Info fontSize="small" /></IconButton>
                 </Tooltip>
               </Box>
@@ -146,19 +143,23 @@ const GenerateKey: React.FC = () => {
 
               <FormControl fullWidth size="small">
                 <InputLabel>
-                  {keyType === 'RSA' ? 'Tamanho da Chave (bits)' : 'Curva Elíptica'}
+                  {keyType === 'RSA' ? t.gk_key_size_rsa : t.gk_key_size_ec}
                 </InputLabel>
                 <Select
                   value={keySize}
-                  label={keyType === 'RSA' ? 'Tamanho da Chave (bits)' : 'Curva Elíptica'}
+                  label={keyType === 'RSA' ? t.gk_key_size_rsa : t.gk_key_size_ec}
                   onChange={(e) => setKeySize(Number(e.target.value))}
                 >
                   {keyType === 'RSA'
                     ? RSA_SIZES.map((s) => (
-                        <MenuItem key={s} value={s}>{s} bits{s === 2048 ? ' (padrão)' : s === 4096 ? ' (alta segurança)' : ''}</MenuItem>
+                        <MenuItem key={s} value={s}>
+                          {s} bits{s === 2048 ? ` (${t.gk_default})` : s === 4096 ? ` (${t.gk_high_security})` : ''}
+                        </MenuItem>
                       ))
                     : EC_SIZES.map((s) => (
-                        <MenuItem key={s.value} value={s.value}>{s.label}{s.value === 256 ? ' (padrão)' : ''}</MenuItem>
+                        <MenuItem key={s.value} value={s.value}>
+                          {s.label}{s.value === 256 ? ` (${t.gk_default})` : ''}
+                        </MenuItem>
                       ))
                   }
                 </Select>
@@ -167,21 +168,19 @@ const GenerateKey: React.FC = () => {
 
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Typography variant="subtitle1">Nome Personalizado</Typography>
-                <Tooltip title="Digite um nome único para identificar facilmente esta chave">
-                  <IconButton size="small">
-                    <Info fontSize="small" />
-                  </IconButton>
+                <Typography variant="subtitle1">{t.gk_custom_name_title}</Typography>
+                <Tooltip title={t.gk_custom_name_hint}>
+                  <IconButton size="small"><Info fontSize="small" /></IconButton>
                 </Tooltip>
               </Box>
               <TextField
                 fullWidth
                 placeholder="Ex: chave_principal_2024"
                 {...register('custom_name', {
-                  required: 'Nome é obrigatório',
+                  required: t.gk_custom_name_required,
                   pattern: {
                     value: /^[a-zA-Z0-9_-]+$/,
-                    message: 'Use apenas letras, números, _ e -',
+                    message: t.gk_name_pattern,
                   },
                 })}
                 error={!!errors.custom_name}
@@ -191,36 +190,32 @@ const GenerateKey: React.FC = () => {
 
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Typography variant="subtitle1">Descrição</Typography>
-                <Tooltip title="Adicione uma descrição para lembrar o propósito desta chave">
-                  <IconButton size="small">
-                    <Info fontSize="small" />
-                  </IconButton>
+                <Typography variant="subtitle1">{t.gk_desc_title}</Typography>
+                <Tooltip title={t.gk_desc_hint}>
+                  <IconButton size="small"><Info fontSize="small" /></IconButton>
                 </Tooltip>
               </Box>
               <TextField
                 fullWidth
                 multiline
                 rows={3}
-                placeholder="Ex: Chave para o certificado do domínio principal"
+                placeholder={t.gk_desc_hint}
                 {...register('description')}
               />
             </Box>
 
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Typography variant="subtitle1">Tags</Typography>
-                <Tooltip title="Adicione tags para facilitar a busca e organização">
-                  <IconButton size="small">
-                    <Info fontSize="small" />
-                  </IconButton>
+                <Typography variant="subtitle1">{t.tags}</Typography>
+                <Tooltip title={t.gk_tags_hint}>
+                  <IconButton size="small"><Info fontSize="small" /></IconButton>
                 </Tooltip>
               </Box>
               <Box display="flex" gap={1} mb={1}>
                 <TextField
                   fullWidth
                   size="small"
-                  placeholder="Digite uma tag e pressione Enter"
+                  placeholder={t.gk_tag_placeholder}
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -236,7 +231,7 @@ const GenerateKey: React.FC = () => {
                   onClick={handleAddTag}
                   disabled={!tagInput.trim()}
                 >
-                  Adicionar
+                  {t.add}
                 </Button>
               </Box>
               <Stack direction="row" spacing={1} flexWrap="wrap">
@@ -260,7 +255,7 @@ const GenerateKey: React.FC = () => {
               disabled={loading}
               fullWidth
             >
-              {loading ? 'Gerando...' : 'Gerar Chave Privada'}
+              {loading ? t.gk_generating : t.gk_generate_btn}
             </Button>
           </Stack>
         </Box>
@@ -270,28 +265,20 @@ const GenerateKey: React.FC = () => {
             severity="success"
             sx={{ mt: 3 }}
             action={
-              <Button
-                color="inherit"
-                size="small"
-                startIcon={<Download />}
-                onClick={handleDownload}
-              >
-                Download
+              <Button color="inherit" size="small" startIcon={<Download />} onClick={handleDownload}>
+                {t.download}
               </Button>
             }
           >
-            <Typography variant="subtitle2" gutterBottom>
-              Chave privada gerada com sucesso!
+            <Typography variant="subtitle2" gutterBottom>{t.gk_success_title}</Typography>
+            <Typography variant="body2">
+              {t.name}: <strong>{generatedKey.custom_name}</strong>
             </Typography>
             <Typography variant="body2">
-              Nome: <strong>{generatedKey.custom_name}</strong>
-            </Typography>
-            <Typography variant="body2">
-              Tipo: <strong>{keyType}</strong> &nbsp;|&nbsp; Tamanho: <strong>{keyType === 'EC' ? `P-${keySize}` : `${keySize} bits`}</strong>
+              {t.gk_success_type}: <strong>{keyType}</strong> &nbsp;|&nbsp; {t.gk_success_size}: <strong>{keyType === 'EC' ? `P-${keySize}` : `${keySize} bits`}</strong>
             </Typography>
             <Typography variant="body2" sx={{ mt: 1 }}>
-              <strong>Importante:</strong> Faça o download e armazene sua chave privada em local seguro.
-              Ela é essencial para usar certificados SSL/TLS.
+              {t.gk_success_important}
             </Typography>
           </Alert>
         )}
@@ -300,39 +287,26 @@ const GenerateKey: React.FC = () => {
       <Paper sx={{ p: 3, mt: 3, bgcolor: 'action.hover' }}>
         <Typography variant="h6" gutterBottom>
           <Info sx={{ verticalAlign: 'middle', mr: 1 }} />
-          Informações sobre Chaves Privadas
+          {t.gk_info_title}
         </Typography>
-        <Typography variant="body2" paragraph>
-          Uma chave privada RSA é um componente fundamental da criptografia SSL/TLS. 
-          Ela é usada para:
-        </Typography>
+        <Typography variant="body2" paragraph>{t.gk_info_desc}</Typography>
         <ul>
-          <li><Typography variant="body2">Gerar Certificate Signing Requests (CSRs)</Typography></li>
-          <li><Typography variant="body2">Descriptografar dados criptografados com a chave pública correspondente</Typography></li>
-          <li><Typography variant="body2">Criar assinaturas digitais para autenticação</Typography></li>
+          <li><Typography variant="body2">{t.gk_info_li1}</Typography></li>
+          <li><Typography variant="body2">{t.gk_info_li2}</Typography></li>
+          <li><Typography variant="body2">{t.gk_info_li3}</Typography></li>
         </ul>
         <Alert severity="warning" sx={{ mt: 2 }}>
-          <strong>Segurança:</strong> Nunca compartilhe sua chave privada! 
-          Mantenha-a segura e faça backups em locais protegidos.
+          <strong>{t.gk_security_warning}</strong>
         </Alert>
-        
+
         <Divider sx={{ my: 3 }} />
-        
-        <Typography variant="h6" gutterBottom>
-          Importando Chaves Existentes
-        </Typography>
-        <Typography variant="body2" paragraph>
-          Se você já possui uma chave privada e deseja importá-la, certifique-se de que ela não está protegida por senha.
-        </Typography>
-        <Typography variant="body2" paragraph>
-          Para remover a senha de uma chave privada:
-        </Typography>
+
+        <Typography variant="h6" gutterBottom>{t.gk_import_title}</Typography>
+        <Typography variant="body2" paragraph>{t.gk_import_desc}</Typography>
         <Box sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1, mb: 2 }}>
           <code>openssl rsa -in chave_com_senha.key -out chave_sem_senha.key</code>
         </Box>
-        <Typography variant="caption" color="text.secondary">
-          Você será solicitado a digitar a senha atual da chave. O arquivo resultante não terá senha.
-        </Typography>
+        <Typography variant="caption" color="text.secondary">{t.gk_import_note}</Typography>
       </Paper>
     </Box>
   );

@@ -11,6 +11,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface Props {
   open: boolean;
@@ -18,8 +19,8 @@ interface Props {
   onSuccess: () => void;
 }
 
-function strength(p: string): { score: number; label: string; color: 'error'|'warning'|'info'|'success' } {
-  if (!p) return { score: 0, label: '', color: 'error' };
+function strengthScore(p: string): { score: number; color: 'error' | 'warning' | 'info' | 'success' } {
+  if (!p) return { score: 0, color: 'error' };
   let s = 0;
   if (p.length >= 8)  s += 20;
   if (p.length >= 12) s += 15;
@@ -29,46 +30,50 @@ function strength(p: string): { score: number; label: string; color: 'error'|'wa
   if (/[0-9]/.test(p)) s += 10;
   if (/[^a-zA-Z0-9]/.test(p)) s += 20;
   s = Math.min(s, 100);
-  if (s < 30) return { score: s, label: 'Fraca', color: 'error' };
-  if (s < 55) return { score: s, label: 'Razoável', color: 'warning' };
-  if (s < 80) return { score: s, label: 'Boa', color: 'info' };
-  return { score: s, label: 'Forte', color: 'success' };
+  if (s < 30) return { score: s, color: 'error' };
+  if (s < 55) return { score: s, color: 'warning' };
+  if (s < 80) return { score: s, color: 'info' };
+  return { score: s, color: 'success' };
 }
 
-const securityTips = [
-  'Use no mínimo 12 caracteres com letras, números e símbolos.',
-  'Não reutilize senhas de outros sistemas ou serviços.',
-  'Armazene a senha em um gerenciador de senhas corporativo.',
-  'Nunca compartilhe as credenciais de administrador.',
-  'Esta conta tem acesso a todos os certificados e usuários do sistema.',
-  'Em caso de suspeita de comprometimento, altere a senha imediatamente e notifique a equipe de segurança.',
-];
-
 const ForcePasswordChange: React.FC<Props> = ({ open, username, onSuccess }) => {
+  const { t } = useLanguage();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const str = strength(next);
+  const str = strengthScore(next);
+
+  const strengthLabel = () => {
+    if (str.score < 30) return t.fp_weak;
+    if (str.score < 55) return t.fp_fair;
+    if (str.score < 80) return t.fp_good;
+    return t.fp_strong;
+  };
+
   const mismatch = !!confirm && next !== confirm;
 
+  const securityTips = [
+    t.fp_tip1, t.fp_tip2, t.fp_tip3, t.fp_tip4, t.fp_tip5, t.fp_tip6,
+  ];
+
   const handleSubmit = async () => {
-    if (!current || !next || !confirm) { toast.error('Preencha todos os campos.'); return; }
-    if (next !== confirm) { toast.error('As senhas não coincidem.'); return; }
-    if (next.length < 8)  { toast.error('A senha deve ter pelo menos 8 caracteres.'); return; }
-    if (str.score < 30)   { toast.error('Escolha uma senha mais forte.'); return; }
+    if (!current || !next || !confirm) { toast.error(t.fp_fill_all); return; }
+    if (next !== confirm) { toast.error(t.fp_mismatch_err); return; }
+    if (next.length < 8) { toast.error(t.fp_min_8); return; }
+    if (str.score < 30) { toast.error(t.fp_too_weak); return; }
     try {
       setLoading(true);
       await axios.post('/api/auth/change-password', {
         current_password: current,
         new_password: next,
       });
-      toast.success('Senha alterada com sucesso! Bem-vindo ao SSL Manager.');
+      toast.success(t.fp_success);
       onSuccess();
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Erro ao alterar senha.');
+      toast.error(err.response?.data?.detail || t.fp_err);
     } finally {
       setLoading(false);
     }
@@ -78,19 +83,17 @@ const ForcePasswordChange: React.FC<Props> = ({ open, username, onSuccess }) => 
     <Dialog open={open} maxWidth="sm" fullWidth disableEscapeKeyDown>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <AdminPanelSettings color="warning" />
-        Alteração de Senha Obrigatória
+        {t.fp_title}
       </DialogTitle>
 
       <DialogContent>
         <Alert severity="warning" sx={{ mb: 2 }}>
-          <AlertTitle>Primeiro acesso detectado — {username}</AlertTitle>
-          Por segurança, você deve definir uma nova senha antes de continuar.
-          A senha padrão <strong>admin</strong> é conhecida e representa um risco crítico.
+          <AlertTitle>{t.fp_first_access} — {username}</AlertTitle>
+          {t.fp_first_access_desc}
         </Alert>
 
-        {/* Security tips */}
         <Alert severity="info" icon={<Security />} sx={{ mb: 3 }}>
-          <AlertTitle>Recomendações de Segurança para Conta Master</AlertTitle>
+          <AlertTitle>{t.fp_security_title}</AlertTitle>
           <List dense disablePadding>
             {securityTips.map((tip, i) => (
               <ListItem key={i} disablePadding sx={{ py: 0.25 }}>
@@ -105,7 +108,7 @@ const ForcePasswordChange: React.FC<Props> = ({ open, username, onSuccess }) => 
 
         <TextField
           fullWidth
-          label="Senha Atual"
+          label={t.fp_current_pwd}
           type={show ? 'text' : 'password'}
           value={current}
           onChange={e => setCurrent(e.target.value)}
@@ -124,7 +127,7 @@ const ForcePasswordChange: React.FC<Props> = ({ open, username, onSuccess }) => 
 
         <TextField
           fullWidth
-          label="Nova Senha"
+          label={t.fp_new_pwd}
           type={show ? 'text' : 'password'}
           value={next}
           onChange={e => setNext(e.target.value)}
@@ -134,8 +137,8 @@ const ForcePasswordChange: React.FC<Props> = ({ open, username, onSuccess }) => 
         {next && (
           <Box sx={{ mb: 1 }}>
             <Box display="flex" justifyContent="space-between" mb={0.5}>
-              <Typography variant="caption" color="text.secondary">Força da senha</Typography>
-              <Typography variant="caption" color={`${str.color}.main`} fontWeight={600}>{str.label}</Typography>
+              <Typography variant="caption" color="text.secondary">{t.fp_strength}</Typography>
+              <Typography variant="caption" color={`${str.color}.main`} fontWeight={600}>{strengthLabel()}</Typography>
             </Box>
             <LinearProgress variant="determinate" value={str.score} color={str.color} sx={{ borderRadius: 1, height: 6 }} />
           </Box>
@@ -143,13 +146,13 @@ const ForcePasswordChange: React.FC<Props> = ({ open, username, onSuccess }) => 
 
         <TextField
           fullWidth
-          label="Confirmar Nova Senha"
+          label={t.fp_confirm_pwd}
           type={show ? 'text' : 'password'}
           value={confirm}
           onChange={e => setConfirm(e.target.value)}
           margin="normal"
           error={mismatch}
-          helperText={mismatch ? 'As senhas não coincidem.' : ''}
+          helperText={mismatch ? t.fp_mismatch : ''}
           InputProps={{
             endAdornment: !mismatch && confirm ? (
               <InputAdornment position="end"><CheckCircle color="success" /></InputAdornment>
@@ -167,7 +170,7 @@ const ForcePasswordChange: React.FC<Props> = ({ open, username, onSuccess }) => 
           fullWidth
           size="large"
         >
-          {loading ? 'Alterando...' : 'Definir Nova Senha e Continuar'}
+          {loading ? t.fp_changing : t.fp_set_btn}
         </Button>
       </DialogActions>
     </Dialog>

@@ -13,7 +13,6 @@ import ForcePasswordChange from './components/ForcePasswordChange';
 
 // Pages
 import Login from './pages/Login';
-import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import GenerateKey from './pages/GenerateKey';
 import GenerateCSR from './pages/GenerateCSR';
@@ -23,6 +22,8 @@ import Files from './pages/Files';
 import Validation from './pages/Validation';
 import UserManagement from './pages/UserManagement';
 import AppCertificates from './pages/AppCertificates';
+import AppCertsDocumentation from './pages/AppCertsDocumentation';
+import SharedFiles from './pages/SharedFiles';
 
 // ForcePasswordChange wrapper — needs AuthContext
 const ForcePasswordChangeGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -71,7 +72,6 @@ function App() {
           <Router>
             <Routes>
               <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
               <Route
                 path="/"
                 element={
@@ -89,6 +89,8 @@ function App() {
                 <Route path="generate-pfx" element={<GeneratePFX />} />
                 <Route path="generate-ssh-key" element={<GenerateSSHKey />} />
                 <Route path="app-certificates" element={<AppCertificates />} />
+                <Route path="app-certificates/docs" element={<AppCertsDocumentation />} />
+                <Route path="shared" element={<SharedFiles />} />
                 <Route path="files" element={<Files />} />
                 <Route path="validation" element={<Validation />} />
                 <Route path="user-management" element={<UserManagement />} />

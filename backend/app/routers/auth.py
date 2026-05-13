@@ -78,26 +78,9 @@ async def get_admin_user(current_user: User = Depends(get_current_user)) -> User
 # ─── endpoints ────────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=UserSchema)
-async def register(user: UserCreate, db: Session = Depends(get_db)):
-    """Register a new regular user (self-service)."""
-    db_user = db.query(User).filter(
-        (User.email == user.email) | (User.username == user.username)
-    ).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="E-mail ou usuário já cadastrado.")
-
-    db_user = User(
-        email=user.email,
-        username=user.username,
-        hashed_password=get_password_hash(user.password),
-        role="user",
-        is_active=True,
-        force_password_change=False,
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+async def register():
+    """Register a new regular user (self-service) - DISABLED."""
+    raise HTTPException(status_code=403, detail="O registro público está desabilitado. Solicite acesso a um administrador.")
 
 
 @router.post("/token", response_model=Token)

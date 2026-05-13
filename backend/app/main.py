@@ -6,7 +6,7 @@ from sqlalchemy import text
 import os
 
 from app.database import engine, Base, SessionLocal
-from app.routers import auth, certificates, keys, csr, pfx, files, validation, ssh, admin, app_certs
+from app.routers import auth, certificates, keys, csr, pfx, files, validation, ssh, admin, app_certs, shares
 from app.config import settings
 
 
@@ -18,6 +18,7 @@ def _run_migrations(db):
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP WITH TIME ZONE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR",
         # SSH key pairs table (handled by create_all if not exists)
     ]
     for stmt in migrations:
@@ -78,9 +79,11 @@ app = FastAPI(
 )
 
 # ── CORS ────────────────────────────────────────────────────────────────────────
+origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
@@ -97,6 +100,7 @@ app.include_router(files.router,        prefix="/api/files",        tags=["Files
 app.include_router(validation.router,   prefix="/api/validation",   tags=["Validation"])
 app.include_router(ssh.router,          prefix="/api/ssh",          tags=["SSH Keys"])
 app.include_router(app_certs.router,    prefix="/api/app-certs",    tags=["App Certificates"])
+app.include_router(shares.router,       prefix="/api/shares",       tags=["Shares"])
 
 
 @app.get("/")

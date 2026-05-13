@@ -9,6 +9,7 @@ import hashlib
 import base64
 import aiofiles
 from cryptography.fernet import Fernet
+from fastapi.concurrency import run_in_threadpool
 
 from app.database import get_db
 from app.models import User, File, FileType, PfxPassword
@@ -83,7 +84,9 @@ async def generate_pfx_endpoint(
         password = generate_password()
 
         # Create PFX (ca_pem is optional)
-        pfx_data_bytes = create_pfx(cert_pem, key_pem, password, ca_bundle_pem=ca_pem)
+        pfx_data_bytes = await run_in_threadpool(
+            create_pfx, cert_pem, key_pem, password, ca_bundle_pem=ca_pem
+        )
 
         # Save PFX file
         pfx_filename = f"pfx_{current_user.id}_{int(datetime.utcnow().timestamp())}.pfx"

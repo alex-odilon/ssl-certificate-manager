@@ -43,10 +43,12 @@ import {
   ContentCopy,
   Visibility,
   Upload,
+  Share,
 } from '@mui/icons-material';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import UploadDialog from '../components/UploadDialog';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface FileData {
   id: number;
@@ -60,6 +62,7 @@ interface FileData {
 }
 
 const Files: React.FC = () => {
+  const { t } = useLanguage();
   const location = useLocation();
   const [files, setFiles] = useState<FileData[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<FileData[]>([]);
@@ -72,6 +75,10 @@ const Files: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({});
+  const [expiringMap, setExpiringMap] = useState<Record<number, any>>({});
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareEmail, setShareEmail] = useState('');
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     loadFiles();
@@ -116,8 +123,19 @@ const Files: React.FC = () => {
       });
       
       setFileCounts(counts);
+
+      try {
+        const expResponse = await axios.get('/api/certificates/expiring');
+        const map: Record<number, any> = {};
+        expResponse.data.forEach((cert: any) => {
+          map[cert.id] = cert;
+        });
+        setExpiringMap(map);
+      } catch (err) {
+        console.error('Erro ao carregar expirações:', err);
+      }
     } catch (error) {
-      toast.error('Erro ao carregar arquivos');
+      toast.error(t.files_load_err);
     }
   };
 
@@ -188,26 +206,42 @@ const Files: React.FC = () => {
       link.click();
       link.remove();
       
-      toast.success('Download iniciado!');
+      toast.success(t.files_downloading);
     } catch (error) {
-      toast.error('Erro ao fazer download');
+      toast.error(t.files_dl_err);
     }
     handleMenuClose();
   };
 
   const handleDelete = async (file: FileData) => {
-    if (!window.confirm(`Tem certeza que deseja excluir "${file.custom_name}"?\n\nEsta ação não pode ser desfeita.`)) {
+    if (!window.confirm(`${t.files_del_confirm} "${file.custom_name}"?\n\nEsta ação não pode ser desfeita.`)) {
       return;
     }
 
     try {
       await axios.delete(`/api/files/${file.id}`);
-      toast.success('Arquivo excluído com sucesso');
+      toast.success(t.files_del_success);
       loadFiles();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Erro ao excluir arquivo');
+      toast.error(error.response?.data?.detail || t.files_del_err);
     }
     handleMenuClose();
+  };
+
+  const handleShare = async () => {
+    if (!selectedFile || !shareEmail) return;
+    try {
+      setSharing(true);
+      await axios.post('/api/shares/', { file_id: selectedFile.id, target_email: shareEmail });
+      toast.success(t.files_share_success);
+      setShareDialogOpen(false);
+      setShareEmail('');
+      handleMenuClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || t.files_share_err);
+    } finally {
+      setSharing(false);
+    }
   };
 
   const loadPfxPassword = async (fileId: number) => {
@@ -215,7 +249,7 @@ const Files: React.FC = () => {
       const response = await axios.get(`/api/pfx/${fileId}/password`);
       setPfxPasswords({ ...pfxPasswords, [fileId]: response.data.password });
     } catch (error) {
-      toast.error('Erro ao carregar senha');
+      toast.error(t.files_dl_err);
     }
   };
 
@@ -240,22 +274,22 @@ const Files: React.FC = () => {
 
   const getFileTypeLabel = (fileType: string) => {
     const labels: Record<string, string> = {
-      private_key: 'Chave Privada',
-      certificate: 'Certificado',
-      ca_bundle: 'CA Bundle',
-      csr: 'CSR',
-      pfx: 'PFX',
+      private_key: t.files_type_private_key,
+      certificate: t.files_type_cert,
+      ca_bundle: t.files_type_ca_bundle,
+      csr: t.files_type_csr,
+      pfx: t.files_type_pfx,
     };
     return labels[fileType] || fileType;
   };
 
   const tabLabels = [
-    { label: 'Todos', type: 'all' },
-    { label: 'Chaves Privadas', type: 'private_key' },
-    { label: 'Certificados', type: 'certificate' },
-    { label: 'CA Bundles', type: 'ca_bundle' },
-    { label: 'CSRs', type: 'csr' },
-    { label: 'PFX', type: 'pfx' },
+    { label: t.files_all, type: 'all' },
+    { label: t.dash_keys, type: 'private_key' },
+    { label: t.dash_certs, type: 'certificate' },
+    { label: t.dash_bundles, type: 'ca_bundle' },
+    { label: t.dash_csrs, type: 'csr' },
+    { label: t.dash_pfxs, type: 'pfx' },
   ];
 
   const handleExportCSV = async () => {
@@ -268,9 +302,9 @@ const Files: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      toast.success('CSV exportado com sucesso!');
+      toast.success(t.files_export_success);
     } catch {
-      toast.error('Erro ao exportar CSV');
+      toast.error(t.files_load_err);
     }
   };
 
@@ -278,22 +312,14 @@ const Files: React.FC = () => {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" component="h1">
-          Meus Arquivos
+          {t.files_title}
         </Typography>
         <Box display="flex" gap={1}>
-          <Button
-            variant="outlined"
-            startIcon={<Download />}
-            onClick={handleExportCSV}
-          >
-            Exportar CSV
+          <Button variant="outlined" startIcon={<Download />} onClick={handleExportCSV}>
+            {t.files_export_csv}
           </Button>
-          <Button
-            variant="contained"
-            startIcon={<Upload />}
-            onClick={() => setUploadDialogOpen(true)}
-          >
-            Importar Arquivo
+          <Button variant="contained" startIcon={<Upload />} onClick={() => setUploadDialogOpen(true)}>
+            {t.files_import}
           </Button>
         </Box>
       </Box>
@@ -321,7 +347,7 @@ const Files: React.FC = () => {
       <Paper sx={{ p: 2, mb: 3 }}>
         <TextField
           fullWidth
-          placeholder="Buscar por nome, descrição ou tags..."
+          placeholder={t.files_search}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           InputProps={{
@@ -338,12 +364,12 @@ const Files: React.FC = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Tipo</TableCell>
-              <TableCell>Nome</TableCell>
-              <TableCell>Descrição</TableCell>
-              <TableCell>Tags</TableCell>
-              <TableCell>Data de Importação</TableCell>
-              <TableCell align="right">Ações</TableCell>
+              <TableCell>{t.type}</TableCell>
+              <TableCell>{t.name}</TableCell>
+              <TableCell>{t.description}</TableCell>
+              <TableCell>{t.tags}</TableCell>
+              <TableCell>{t.files_import_date}</TableCell>
+              <TableCell align="right">{t.actions}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -360,9 +386,28 @@ const Files: React.FC = () => {
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" fontWeight="medium">
-                      {file.custom_name}
-                    </Typography>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Typography variant="body2" fontWeight="medium">
+                        {file.custom_name}
+                      </Typography>
+                      {expiringMap[file.id] && (
+                        <Tooltip title={`Vence em ${new Date(expiringMap[file.id].expiry_date).toLocaleDateString()}`}>
+                          <Chip 
+                            label={
+                              expiringMap[file.id].days_until_expiry < 0 ? 'VENCIDO' :
+                              expiringMap[file.id].days_until_expiry === 0 ? 'VENCE HOJE' :
+                              `${expiringMap[file.id].days_until_expiry} DIAS`
+                            } 
+                            color={
+                              expiringMap[file.id].days_until_expiry <= 3 ? 'error' :
+                              expiringMap[file.id].days_until_expiry <= 7 ? 'warning' : 'info'
+                            }
+                            size="small" 
+                            variant={expiringMap[file.id].days_until_expiry > 7 ? 'outlined' : 'filled'}
+                          />
+                        </Tooltip>
+                      )}
+                    </Box>
                     <Typography variant="caption" color="text.secondary">
                       {file.filename}
                     </Typography>
@@ -435,7 +480,7 @@ const Files: React.FC = () => {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
-          labelRowsPerPage="Linhas por página:"
+          labelRowsPerPage={t.files_rows_per_page}
         />
       </TableContainer>
 
@@ -445,16 +490,16 @@ const Files: React.FC = () => {
         onClose={handleMenuClose}
       >
         <MenuItem onClick={() => selectedFile && handleDownload(selectedFile)}>
-          <ListItemIcon>
-            <Download fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Download</ListItemText>
+          <ListItemIcon><Download fontSize="small" /></ListItemIcon>
+          <ListItemText>{t.download}</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => { setShareDialogOpen(true); }}>
+          <ListItemIcon><Share fontSize="small" color="primary" /></ListItemIcon>
+          <ListItemText>{t.files_share}</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => selectedFile && handleDelete(selectedFile)}>
-          <ListItemIcon>
-            <Delete fontSize="small" color="error" />
-          </ListItemIcon>
-          <ListItemText>Excluir</ListItemText>
+          <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
+          <ListItemText>{t.delete}</ListItemText>
         </MenuItem>
       </Menu>
 
@@ -467,6 +512,26 @@ const Files: React.FC = () => {
           loadFiles();
         }}
       />
+
+      {/* Share Dialog */}
+      <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>{t.files_share_title}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {t.files_share_desc} "{selectedFile?.custom_name}".
+          </Typography>
+          <TextField
+            fullWidth label={t.files_share_email_label} type="email"
+            value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShareDialogOpen(false)} disabled={sharing}>{t.cancel}</Button>
+          <Button onClick={handleShare} variant="contained" disabled={sharing}>
+            {sharing ? t.files_sharing : t.files_share_btn}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

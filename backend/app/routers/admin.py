@@ -5,8 +5,9 @@ from typing import List
 
 from app.database import get_db
 from app.models import User, File, SshKeyPair
-from app.schemas import UserAdminView, UserAdminCreate, UserAdminUpdate, AdminResetPassword
+from app.schemas import UserAdminView, UserAdminCreate, UserAdminUpdate, AdminResetPassword, UserAdminCreateResponse
 from app.routers.auth import get_admin_user, get_password_hash
+import secrets
 
 router = APIRouter()
 
@@ -22,13 +23,13 @@ async def list_users(
     return db.query(User).order_by(User.created_at.desc()).all()
 
 
-@router.post("/users", response_model=UserAdminView, status_code=201)
+@router.post("/users", response_model=UserAdminCreateResponse, status_code=201)
 async def create_user(
     data: UserAdminCreate,
     _admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    """Create a new user (admin only)."""
+    """Create a new user (admin only) and auto-generate password."""
     existing = db.query(User).filter(
         (User.email == data.email) | (User.username == data.username)
     ).first()
@@ -38,17 +39,22 @@ async def create_user(
     if data.role not in ("admin", "user"):
         raise HTTPException(status_code=400, detail="Role inválido. Use 'admin' ou 'user'.")
 
+    generated_password = secrets.token_urlsafe(12)
+
     new_user = User(
         email=data.email,
         username=data.username,
-        hashed_password=get_password_hash(data.password),
+        full_name=data.full_name,
+        hashed_password=get_password_hash(generated_password),
         role=data.role,
         is_active=True,
-        force_password_change=True,   # New users must change password on first login
+        force_password_change=True,
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    
+    setattr(new_user, "generated_password", generated_password)
     return new_user
 
 
@@ -143,13 +149,16 @@ async def delete_user(
         raise HTTPException(status_code=404, detail="Usuário não encontrado.")
 
     import os
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # Delete files from disk and DB
     for f in db.query(File).filter(File.owner_id == user_id).all():
         try:
             if os.path.exists(f.file_path):
                 os.remove(f.file_path)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Falha ao apagar arquivo {f.file_path} do usuário {user_id}: {e}")
         db.delete(f)
 
     # Delete SSH key pairs
@@ -157,8 +166,8 @@ async def delete_user(
         try:
             if os.path.exists(kp.private_key_path):
                 os.remove(kp.private_key_path)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Falha ao apagar chave SSH {kp.private_key_path} do usuário {user_id}: {e}")
         db.delete(kp)
 
     db.delete(user)
