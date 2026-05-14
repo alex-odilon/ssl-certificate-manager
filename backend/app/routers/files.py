@@ -1,8 +1,8 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
 import csv
 import io
 import json
@@ -14,55 +14,57 @@ from app.schemas import FileResponse
 from app.routers.auth import get_current_user
 
 router = APIRouter()
+logger = logging.getLogger("ssl_manager.files")
+
+
+def _parse_tags(raw) -> list:
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return raw
+    try:
+        return json.loads(raw)
+    except Exception:
+        return []
+
 
 @router.get("/", response_model=List[FileResponse])
 async def list_all_files(
-    file_type: Optional[str] = Query(None, description="Filter by file type"),
-    search: Optional[str] = Query(None, description="Search in name, description, or tags"),
+    file_type: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all files for the current user with optional filters"""
+    """List all files for the current user with optional filters."""
     query = db.query(File).filter(File.owner_id == current_user.id)
-    
-    # Filter by file type
+
     if file_type:
         try:
             ft = FileType(file_type)
             query = query.filter(File.file_type == ft)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid file type")
-    
-    # Search functionality
+            raise HTTPException(status_code=400, detail="Tipo de arquivo inválido.")
+
     if search:
-        search_term = f"%{search}%"
+        term = f"%{search}%"
         query = query.filter(
-            (File.custom_name.ilike(search_term)) |
-            (File.description.ilike(search_term)) |
-            (File.tags.ilike(search_term))
+            (File.custom_name.ilike(term)) |
+            (File.description.ilike(term)) |
+            (File.tags.ilike(term))
         )
-    
-    # Order by creation date (newest first)
+
     files = query.order_by(File.created_at.desc()).all()
-    
-    # Parse tags from JSON string
-    for file in files:
-        if file.tags:
-            try:
-                file.tags = json.loads(file.tags)
-            except:
-                file.tags = []
-        else:
-            file.tags = []
-    
+    for f in files:
+        f.tags = _parse_tags(f.tags)
     return files
+
 
 @router.get("/export")
 async def export_files_csv(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Export all files as a CSV for the current user."""
+    """Export all files as CSV."""
     files = db.query(File).filter(
         File.owner_id == current_user.id
     ).order_by(File.created_at.desc()).all()
@@ -72,7 +74,7 @@ async def export_files_csv(
     writer.writerow(["Nome", "Tipo", "Descrição", "Tags", "Criado em", "Importado em"])
 
     for f in files:
-        tags = json.loads(f.tags) if f.tags else []
+        tags = _parse_tags(f.tags)
         writer.writerow([
             f.custom_name,
             f.file_type.value,
@@ -86,28 +88,25 @@ async def export_files_csv(
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=\"meus_arquivos_ssl.csv\""},
+        headers={"Content-Disposition": 'attachment; filename="meus_arquivos_ssl.csv"'},
     )
+
 
 @router.get("/stats")
 async def get_file_stats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get statistics about user's files"""
+    """Get statistics about user's files."""
     stats = {}
-    
     for file_type in FileType:
-        count = db.query(File).filter(
+        stats[file_type.value] = db.query(File).filter(
             File.owner_id == current_user.id,
             File.file_type == file_type
         ).count()
-        stats[file_type.value] = count
-    
-    total = db.query(File).filter(File.owner_id == current_user.id).count()
-    stats['total'] = total
-    
+    stats['total'] = db.query(File).filter(File.owner_id == current_user.id).count()
     return stats
+
 
 @router.delete("/{file_id}")
 async def delete_file(
@@ -115,49 +114,38 @@ async def delete_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Delete a file"""
+    """Delete a file from the database and disk."""
+    file = db.query(File).filter(
+        File.id == file_id,
+        File.owner_id == current_user.id
+    ).first()
+
+    if not file:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+
+    file_path = file.file_path
+
     try:
-        # Find the file
-        file = db.query(File).filter(
-            File.id == file_id,
-            File.owner_id == current_user.id
-        ).first()
-        
-        if not file:
-            raise HTTPException(status_code=404, detail="File not found")
-        
-        # Store file path before deleting from DB
-        file_path = file.file_path
-        
-        # If it's a PFX, delete the password record first
         if file.file_type == FileType.PFX:
-            pfx_password = db.query(PfxPassword).filter(
-                PfxPassword.file_id == file_id
-            ).first()
+            pfx_password = db.query(PfxPassword).filter(PfxPassword.file_id == file_id).first()
             if pfx_password:
                 db.delete(pfx_password)
-        
-        # Delete from database
+
         db.delete(file)
         db.commit()
-        
-        # Try to delete the actual file from disk
-        import logging
-        logger = logging.getLogger(__name__)
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except Exception as e:
-            logger.error(f"Erro crítico: Não foi possível deletar arquivo do disco {file_path}: {e}")
-            raise HTTPException(status_code=500, detail="Erro ao deletar o arquivo físico do disco.")
-        
-        return {"message": "File deleted successfully", "id": file_id}
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+        return {"message": "Arquivo deletado com sucesso.", "id": file_id}
+
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         db.rollback()
-        print(f"Error deleting file: {e}")
-        raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
+        logger.error("File deletion failed", exc_info=True, extra={"file_id": file_id, "user_id": current_user.id})
+        raise HTTPException(status_code=500, detail="Erro ao deletar arquivo. Contate o administrador.")
+
 
 @router.put("/{file_id}")
 async def update_file(
@@ -168,24 +156,23 @@ async def update_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update file metadata"""
+    """Update file metadata."""
     file = db.query(File).filter(
         File.id == file_id,
         File.owner_id == current_user.id
     ).first()
-    
+
     if not file:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Update fields if provided
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+
     if custom_name is not None:
         file.custom_name = custom_name
     if description is not None:
         file.description = description
     if tags is not None:
         file.tags = json.dumps(tags)
-    
+
     db.commit()
     db.refresh(file)
-    
+    file.tags = _parse_tags(file.tags)
     return file

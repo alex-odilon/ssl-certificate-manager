@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import {
   PersonAdd, Block, CheckCircle, Delete, LockReset,
-  AdminPanelSettings, Person, Refresh,
+  AdminPanelSettings, Person, Refresh, LockOpen,
 } from '@mui/icons-material';
 import axios from 'axios';
 import { toast } from 'react-toastify';
@@ -22,6 +22,8 @@ interface UserRecord {
   role: string;
   is_active: boolean;
   force_password_change: boolean;
+  failed_login_attempts: number;
+  login_locked: boolean;
   last_login: string | null;
   created_at: string;
 }
@@ -54,6 +56,10 @@ const UserManagement: React.FC = () => {
 
   const [deleteTarget, setDeleteTarget] = useState<UserRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [unlockTarget, setUnlockTarget] = useState<UserRecord | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState('');
 
   useEffect(() => { loadAll(); }, []);
 
@@ -134,6 +140,21 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  const handleUnlock = async (user: UserRecord) => {
+    try {
+      setUnlocking(true);
+      const res = await axios.post(`/api/admin/users/${user.id}/unlock`);
+      setUnlockTarget(user);
+      setUnlockPassword(res.data.generated_password);
+      toast.success(t.um_unlock_success);
+      loadAll();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || t.um_err_unlock);
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
   const localeStr = lang === 'pt-BR' ? 'pt-BR' : lang === 'es' ? 'es-ES' : 'en-US';
 
   return (
@@ -201,6 +222,9 @@ const UserManagement: React.FC = () => {
                       {u.force_password_change && (
                         <Chip label={t.um_must_change_pwd} size="small" color="warning" />
                       )}
+                      {u.login_locked && (
+                        <Chip label={t.um_login_locked_chip} size="small" color="error" />
+                      )}
                     </Box>
                   </TableCell>
                   <TableCell><Typography variant="body2">{u.email}</Typography></TableCell>
@@ -230,6 +254,20 @@ const UserManagement: React.FC = () => {
                   </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      {u.login_locked && (
+                        <Tooltip title={t.um_unlock_tip}>
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="info"
+                              onClick={() => handleUnlock(u)}
+                              disabled={unlocking}
+                            >
+                              <LockOpen fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      )}
                       <Tooltip title={u.is_active ? t.um_block_access : t.um_unblock_access}>
                         <IconButton size="small" onClick={() => toggleActive(u)} color={u.is_active ? 'warning' : 'success'}>
                           {u.is_active ? <Block fontSize="small" /> : <CheckCircle fontSize="small" />}
@@ -325,6 +363,22 @@ const UserManagement: React.FC = () => {
           <Button onClick={() => setDeleteTarget(null)} disabled={deleting}>{t.cancel}</Button>
           <Button onClick={handleDelete} variant="contained" color="error" disabled={deleting}>
             {deleting ? t.um_deleting : t.um_delete_permanent}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Unlock Account Dialog — shows generated password after unlock */}
+      <Dialog open={!!unlockTarget && !!unlockPassword} onClose={() => { setUnlockTarget(null); setUnlockPassword(''); }} maxWidth="xs" fullWidth>
+        <DialogTitle>{t.um_unlock_dialog_title} — {unlockTarget?.username}</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>{t.um_unlock_info}</Alert>
+          <Box sx={{ mt: 1, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
+            <Typography variant="h5" component="code">{unlockPassword}</Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setUnlockTarget(null); setUnlockPassword(''); }} variant="contained">
+            {t.um_done}
           </Button>
         </DialogActions>
       </Dialog>

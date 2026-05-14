@@ -20,6 +20,7 @@ export default function Login() {
   const { t } = useLanguage();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isLocked, setIsLocked] = useState(false);
   const {
     register,
     handleSubmit,
@@ -29,10 +30,21 @@ export default function Login() {
   const onSubmit = async (data: LoginFormData) => {
     try {
       setError('');
+      setIsLocked(false);
       await signIn(data.username, data.password);
       navigate('/dashboard');
-    } catch (err) {
-      setError(t.login_error);
+    } catch (err: any) {
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail;
+
+      if (status === 403) {
+        setIsLocked(true);
+        setError(typeof detail === 'string' ? detail : t.login_locked);
+      } else if (typeof detail === 'string') {
+        setError(detail);
+      } else {
+        setError(t.login_error);
+      }
     }
   };
 
@@ -52,7 +64,9 @@ export default function Login() {
             {t.login_subtitle}
           </Typography>
           {error && (
-            <Alert severity="error" sx={{ mt: 2, width: '100%' }}>{error}</Alert>
+            <Alert severity={isLocked ? 'warning' : 'error'} sx={{ mt: 2, width: '100%' }}>
+              {error}
+            </Alert>
           )}
           <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ mt: 3, width: '100%' }}>
             <TextField
@@ -79,7 +93,11 @@ export default function Login() {
               }}
             />
             <Button
-              type="submit" fullWidth variant="contained" sx={{ mt: 3, mb: 2 }} disabled={isSubmitting}
+              type="submit"
+              fullWidth
+              variant="contained"
+              sx={{ mt: 3, mb: 2 }}
+              disabled={isSubmitting || isLocked}
             >
               {isSubmitting ? t.login_signing_in : t.login_sign_in}
             </Button>

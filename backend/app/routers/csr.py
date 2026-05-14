@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse as FastAPIFileResponse
 from sqlalchemy.orm import Session
@@ -12,9 +13,22 @@ from app.models import User, File, FileType
 from app.schemas import CSRCreate, FileResponse
 from app.routers.auth import get_current_user
 from app.utils.crypto import generate_private_key, generate_csr
+from app.utils.file_crypto import encrypt_file
 from app.config import settings
 
 router = APIRouter()
+logger = logging.getLogger("ssl_manager.csr")
+
+
+def _parse_tags(raw) -> list:
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return raw
+    try:
+        return json.loads(raw)
+    except Exception:
+        return []
 
 
 @router.post("/generate", response_model=FileResponse)
@@ -28,26 +42,27 @@ async def generate_csr_endpoint(
         private_key_pem = generate_private_key(key_type=csr_data.key_type, key_size=csr_data.key_size)
         csr_pem = generate_csr(private_key_pem, csr_data.model_dump())
 
-        # Save private key
-        key_filename = f"csr_private_key_{current_user.id}_{int(datetime.utcnow().timestamp())}.pem"
+        ts = int(datetime.utcnow().timestamp())
+        tags_json = json.dumps(csr_data.tags) if csr_data.tags else "[]"
+
+        key_filename = f"csr_private_key_{current_user.id}_{ts}.pem"
         key_path = os.path.join(settings.SSL_FILES_DIR, key_filename)
 
         async with aiofiles.open(key_path, 'wb') as f:
-            await f.write(private_key_pem)
+            await f.write(encrypt_file(private_key_pem, settings.ENCRYPTION_KEY))
 
         db_key = File(
             filename=key_filename,
             custom_name=f"{csr_data.custom_name}_private_key",
-            description=f"Private key for CSR: {csr_data.custom_name}",
+            description=f"Chave privada do CSR: {csr_data.custom_name}",
             file_type=FileType.PRIVATE_KEY,
             file_path=key_path,
-            tags=json.dumps(csr_data.tags) if csr_data.tags else "[]",
+            tags=tags_json,
             owner_id=current_user.id
         )
         db.add(db_key)
 
-        # Save CSR
-        csr_filename = f"csr_{current_user.id}_{int(datetime.utcnow().timestamp())}.csr"
+        csr_filename = f"csr_{current_user.id}_{ts}.csr"
         csr_path = os.path.join(settings.SSL_FILES_DIR, csr_filename)
 
         async with aiofiles.open(csr_path, 'wb') as f:
@@ -59,25 +74,21 @@ async def generate_csr_endpoint(
             description=csr_data.description,
             file_type=FileType.CSR,
             file_path=csr_path,
-            tags=json.dumps(csr_data.tags) if csr_data.tags else "[]",
+            tags=tags_json,
             owner_id=current_user.id
         )
         db.add(db_csr)
         db.commit()
         db.refresh(db_csr)
-
-        if db_csr.tags:
-            try:
-                db_csr.tags = json.loads(db_csr.tags)
-            except Exception:
-                db_csr.tags = []
-        else:
-            db_csr.tags = []
-
+        db_csr.tags = _parse_tags(db_csr.tags)
         return db_csr
-    except Exception as e:
+
+    except HTTPException:
+        raise
+    except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("CSR generation failed", exc_info=True, extra={"user_id": current_user.id})
+        raise HTTPException(status_code=500, detail="Erro ao gerar CSR. Contate o administrador.")
 
 
 @router.get("/", response_model=List[FileResponse])
@@ -90,16 +101,8 @@ async def list_csrs(
         File.owner_id == current_user.id,
         File.file_type == FileType.CSR
     ).all()
-
     for csr in csrs:
-        if csr.tags:
-            try:
-                csr.tags = json.loads(csr.tags)
-            except Exception:
-                csr.tags = []
-        else:
-            csr.tags = []
-
+        csr.tags = _parse_tags(csr.tags)
     return csrs
 
 
@@ -117,10 +120,10 @@ async def download_csr(
     ).first()
 
     if not csr_file:
-        raise HTTPException(status_code=404, detail="CSR not found")
+        raise HTTPException(status_code=404, detail="CSR não encontrado.")
 
     if not os.path.exists(csr_file.file_path):
-        raise HTTPException(status_code=404, detail="File not found on disk")
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado no disco.")
 
     return FastAPIFileResponse(
         path=csr_file.file_path,

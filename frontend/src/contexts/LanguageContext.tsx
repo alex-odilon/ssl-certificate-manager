@@ -538,6 +538,16 @@ export interface Translations {
   login_sign_in: string;
   login_signing_in: string;
   login_error: string;
+  login_locked: string;
+  // User management — lockout
+  um_login_locked_chip: string;
+  um_unlock_tip: string;
+  um_unlock_dialog_title: string;
+  um_unlock_info: string;
+  um_unlocking: string;
+  um_unlock_btn: string;
+  um_unlock_success: string;
+  um_err_unlock: string;
 }
 
 const pt: Translations = {
@@ -1050,6 +1060,15 @@ const pt: Translations = {
   login_sign_in: 'Entrar',
   login_signing_in: 'Entrando...',
   login_error: 'Usuário ou senha inválidos',
+  login_locked: 'Conta bloqueada. Entre em contato com o administrador.',
+  um_login_locked_chip: 'Login bloqueado',
+  um_unlock_tip: 'Desbloquear conta e gerar nova senha',
+  um_unlock_dialog_title: 'Conta Desbloqueada',
+  um_unlock_info: 'O usuário foi desbloqueado e uma nova senha temporária foi gerada. Envie-a ao usuário — ele será obrigado a trocá-la no próximo acesso.',
+  um_unlocking: 'Desbloqueando...',
+  um_unlock_btn: 'Desbloquear',
+  um_unlock_success: 'Conta desbloqueada com sucesso.',
+  um_err_unlock: 'Erro ao desbloquear conta.',
 };
 
 const en: Translations = {
@@ -1562,6 +1581,15 @@ const en: Translations = {
   login_sign_in: 'Sign In',
   login_signing_in: 'Signing in...',
   login_error: 'Invalid username or password',
+  login_locked: 'Account locked. Please contact the administrator.',
+  um_login_locked_chip: 'Login locked',
+  um_unlock_tip: 'Unlock account and generate new password',
+  um_unlock_dialog_title: 'Account Unlocked',
+  um_unlock_info: 'The user has been unlocked and a new temporary password was generated. Send it to the user — they will be required to change it on next login.',
+  um_unlocking: 'Unlocking...',
+  um_unlock_btn: 'Unlock',
+  um_unlock_success: 'Account unlocked successfully.',
+  um_err_unlock: 'Error unlocking account.',
 };
 
 const es: Translations = {
@@ -2074,6 +2102,15 @@ const es: Translations = {
   login_sign_in: 'Iniciar Sesión',
   login_signing_in: 'Iniciando sesión...',
   login_error: 'Usuario o contraseña inválidos',
+  login_locked: 'Cuenta bloqueada. Contacte al administrador.',
+  um_login_locked_chip: 'Inicio bloqueado',
+  um_unlock_tip: 'Desbloquear cuenta y generar nueva contraseña',
+  um_unlock_dialog_title: 'Cuenta Desbloqueada',
+  um_unlock_info: 'El usuario ha sido desbloqueado y se generó una nueva contraseña temporal. Envíela al usuario — deberá cambiarla en el próximo acceso.',
+  um_unlocking: 'Desbloqueando...',
+  um_unlock_btn: 'Desbloquear',
+  um_unlock_success: 'Cuenta desbloqueada correctamente.',
+  um_err_unlock: 'Error al desbloquear la cuenta.',
 };
 
 export const LANGUAGES: { code: Language; label: string; flag: string }[] = [

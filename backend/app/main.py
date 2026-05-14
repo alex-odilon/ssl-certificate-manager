@@ -1,42 +1,75 @@
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from sqlalchemy import text
-import os
+from sqlalchemy.orm import Session
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
-from app.database import engine, Base, SessionLocal
+from app.database import engine, Base, SessionLocal, get_db
 from app.routers import auth, certificates, keys, csr, pfx, files, validation, ssh, admin, app_certs, shares
 from app.config import settings
+from app.logging_config import configure_logging
+from app.rate_limit import limiter
+
+configure_logging()
+logger = logging.getLogger("ssl_manager")
+
+_INSECURE_KEYS = {"your-secret-key-here-change-in-production", "changeme", "secret"}
 
 
-def _run_migrations(db):
-    """Add new columns / tables that may not exist in older databases."""
+def _validate_config() -> None:
+    if settings.SECRET_KEY in _INSECURE_KEYS:
+        raise RuntimeError(
+            "FATAL: SECRET_KEY não foi configurado. "
+            "Gere um com 'openssl rand -hex 32' e configure no .env."
+        )
+    if not settings.ENCRYPTION_KEY:
+        logger.warning("ENCRYPTION_KEY não configurada — chaves privadas não estão criptografadas em disco.")
+    if settings.ADMIN_PASSWORD in {"admin123", "sslmanager123", "changeme"}:
+        logger.warning(
+            "ADMIN_PASSWORD usa um valor padrão inseguro. "
+            "Troque a senha do admin imediatamente após o primeiro login."
+        )
+
+
+def _run_migrations(db) -> None:
     migrations = [
-        # User table — new columns for role-based access and security
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR DEFAULT 'user'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP WITH TIME ZONE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR",
-        # SSH key pairs table (handled by create_all if not exists)
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS login_locked BOOLEAN DEFAULT FALSE",
+        # AuditLog table
+        """CREATE TABLE IF NOT EXISTS audit_logs (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            action VARCHAR NOT NULL,
+            resource_type VARCHAR,
+            resource_id INTEGER,
+            details TEXT,
+            ip_address VARCHAR,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
     ]
     for stmt in migrations:
         try:
             db.execute(text(stmt))
         except Exception as exc:
-            # Non-fatal — column may already exist or DB may not support IF NOT EXISTS
-            print(f"Migration note: {exc}")
+            logger.warning("Migration skipped", extra={"stmt": stmt[:80], "reason": str(exc)})
     db.commit()
+    logger.info("Database migrations applied")
 
 
-def _ensure_admin(db):
-    """Create the default admin user if no admin exists yet."""
+def _ensure_admin(db) -> None:
     from app.models import User
     from app.routers.auth import get_password_hash
 
-    admin_exists = db.query(User).filter(User.role == "admin").first()
-    if admin_exists:
+    if db.query(User).filter(User.role == "admin").first():
         return
 
     admin_user = User(
@@ -45,18 +78,20 @@ def _ensure_admin(db):
         hashed_password=get_password_hash(settings.ADMIN_PASSWORD),
         role="admin",
         is_active=True,
-        force_password_change=True,   # Force password change on first login
+        force_password_change=True,
     )
     db.add(admin_user)
     db.commit()
-    print(f"[startup] Default admin user created: {settings.ADMIN_USERNAME!r}")
-    print("[startup] IMPORTANT: Change the admin password on first login!")
+    logger.info("Default admin user created", extra={"username": settings.ADMIN_USERNAME})
+    logger.warning("Change the admin password on first login!")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── Startup ────────────────────────────────────────────────────────────────
+    _validate_config()
     Base.metadata.create_all(bind=engine)
+
+    import os
     os.makedirs(settings.SSL_FILES_DIR, exist_ok=True)
 
     db = SessionLocal()
@@ -66,8 +101,9 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
+    logger.info("SSL Certificate Manager started", extra={"version": "2.0.0", "docs_enabled": settings.ENABLE_DOCS})
     yield
-    # ── Shutdown ───────────────────────────────────────────────────────────────
+    logger.info("SSL Certificate Manager shutting down")
 
 
 app = FastAPI(
@@ -75,11 +111,17 @@ app = FastAPI(
     description="Gerenciador corporativo de certificados SSL/TLS e chaves SSH",
     version="2.0.0",
     lifespan=lifespan,
-    # Hide docs in production by setting docs_url=None in the config
+    docs_url="/docs" if settings.ENABLE_DOCS else None,
+    redoc_url="/redoc" if settings.ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if settings.ENABLE_DOCS else None,
 )
 
-# ── CORS ────────────────────────────────────────────────────────────────────────
-origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
+# ── Rate limiter ─────────────────────────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── CORS ─────────────────────────────────────────────────────────────────────
+origins = [o.strip() for o in settings.CORS_ORIGINS.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
@@ -89,7 +131,33 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-# ── Routers ─────────────────────────────────────────────────────────────────────
+
+# ── CSRF protection ───────────────────────────────────────────────────────────
+@app.middleware("http")
+async def csrf_protection(request: Request, call_next):
+    if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        origin = request.headers.get("Origin", "")
+        if origin and origin not in origins:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "CSRF protection triggered."}
+            )
+    return await call_next(request)
+
+
+# ── Global exception handlers ─────────────────────────────────────────────────
+@app.exception_handler(404)
+async def not_found_handler(_request: Request, _exc):
+    return JSONResponse(status_code=404, content={"detail": "Recurso não encontrado."})
+
+
+@app.exception_handler(500)
+async def server_error_handler(_request: Request, exc):
+    logger.error("Unhandled server error", exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": "Erro interno do servidor. Contate o administrador."})
+
+
+# ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth.router,         prefix="/api/auth",         tags=["Authentication"])
 app.include_router(admin.router,        prefix="/api/admin",        tags=["Admin"])
 app.include_router(certificates.router, prefix="/api/certificates", tags=["Certificates"])
@@ -109,5 +177,10 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+async def health_check(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "ok"}
+    except Exception:
+        logger.error("Health check failed — database unreachable")
+        return JSONResponse(status_code=503, content={"status": "unhealthy", "database": "unreachable"})

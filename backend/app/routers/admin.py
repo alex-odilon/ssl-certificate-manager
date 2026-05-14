@@ -1,5 +1,8 @@
 """Admin router — full user management for administrators."""
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+import os
+import secrets
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -7,26 +10,25 @@ from app.database import get_db
 from app.models import User, File, SshKeyPair
 from app.schemas import UserAdminView, UserAdminCreate, UserAdminUpdate, AdminResetPassword, UserAdminCreateResponse
 from app.routers.auth import get_admin_user, get_password_hash
-import secrets
+from app.utils.audit import record as audit
 
 router = APIRouter()
+logger = logging.getLogger("ssl_manager.admin")
 
-
-# ─── User listing & creation ──────────────────────────────────────────────────
 
 @router.get("/users", response_model=List[UserAdminView])
 async def list_users(
     _admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    """List all users in the system."""
     return db.query(User).order_by(User.created_at.desc()).all()
 
 
 @router.post("/users", response_model=UserAdminCreateResponse, status_code=201)
 async def create_user(
     data: UserAdminCreate,
-    _admin: User = Depends(get_admin_user),
+    request: Request,
+    admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
     """Create a new user (admin only) and auto-generate password."""
@@ -40,7 +42,6 @@ async def create_user(
         raise HTTPException(status_code=400, detail="Role inválido. Use 'admin' ou 'user'.")
 
     generated_password = secrets.token_urlsafe(12)
-
     new_user = User(
         email=data.email,
         username=data.username,
@@ -53,12 +54,18 @@ async def create_user(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
+
+    logger.info("Admin created user", extra={
+        "event": "admin.user_created",
+        "admin_id": admin.id,
+        "new_username": new_user.username,
+    })
+    audit(db, user_id=admin.id, action="user.created", resource_type="user",
+          resource_id=new_user.id, ip_address=request.client.host if request.client else None)
+
     setattr(new_user, "generated_password", generated_password)
     return new_user
 
-
-# ─── Single user management ───────────────────────────────────────────────────
 
 @router.get("/users/{user_id}", response_model=UserAdminView)
 async def get_user(
@@ -79,12 +86,11 @@ async def update_user(
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    """Update user attributes: role, is_active, force_password_change, email."""
+    """Update user attributes."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado.")
 
-    # Prevent admin from demoting/deactivating themselves
     if user.id == admin.id:
         if data.is_active is False:
             raise HTTPException(status_code=400, detail="Você não pode desativar sua própria conta.")
@@ -92,7 +98,6 @@ async def update_user(
             raise HTTPException(status_code=400, detail="Você não pode remover seu próprio papel de administrador.")
 
     if data.email is not None:
-        # Check uniqueness
         clash = db.query(User).filter(User.email == data.email, User.id != user_id).first()
         if clash:
             raise HTTPException(status_code=400, detail="E-mail já utilizado por outro usuário.")
@@ -111,6 +116,38 @@ async def update_user(
     return user
 
 
+@router.post("/users/{user_id}/unlock")
+async def unlock_user(
+    user_id: int,
+    request: Request,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Unlock a locked account and generate a new temporary password."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    new_password = secrets.token_urlsafe(12)
+    user.login_locked = False
+    user.failed_login_attempts = 0
+    user.is_active = True
+    user.hashed_password = get_password_hash(new_password)
+    user.force_password_change = True
+    db.commit()
+
+    logger.info("User unlocked by admin", extra={
+        "event": "admin.user_unlocked",
+        "admin_id": admin.id,
+        "target_user_id": user_id,
+        "username": user.username,
+    })
+    audit(db, user_id=admin.id, action="user.unlocked", resource_type="user",
+          resource_id=user_id, ip_address=request.client.host if request.client else None)
+
+    return {"generated_password": new_password, "message": f"Usuário '{user.username}' desbloqueado com sucesso."}
+
+
 @router.post("/users/{user_id}/reset-password")
 async def reset_user_password(
     user_id: int,
@@ -118,7 +155,7 @@ async def reset_user_password(
     _admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    """Reset a user's password (admin action). Forces password change on next login."""
+    """Reset a user's password (admin action)."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado.")
@@ -134,13 +171,11 @@ async def reset_user_password(
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: int,
+    request: Request,
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Delete a user and all their associated files and SSH keys.
-    The admin cannot delete their own account.
-    """
+    """Delete a user and all their associated files and SSH keys."""
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="Você não pode excluir sua própria conta.")
 
@@ -148,34 +183,38 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado.")
 
-    import os
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    # Delete files from disk and DB
+    username = user.username
+
     for f in db.query(File).filter(File.owner_id == user_id).all():
         try:
             if os.path.exists(f.file_path):
                 os.remove(f.file_path)
-        except Exception as e:
-            logger.error(f"Falha ao apagar arquivo {f.file_path} do usuário {user_id}: {e}")
+        except Exception as exc:
+            logger.error("Failed to delete file from disk", extra={"path": f.file_path, "error": str(exc)})
         db.delete(f)
 
-    # Delete SSH key pairs
     for kp in db.query(SshKeyPair).filter(SshKeyPair.owner_id == user_id).all():
         try:
             if os.path.exists(kp.private_key_path):
                 os.remove(kp.private_key_path)
-        except Exception as e:
-            logger.error(f"Falha ao apagar chave SSH {kp.private_key_path} do usuário {user_id}: {e}")
+        except Exception as exc:
+            logger.error("Failed to delete SSH key from disk", extra={"path": kp.private_key_path, "error": str(exc)})
         db.delete(kp)
 
     db.delete(user)
     db.commit()
-    return {"message": f"Usuário '{user.username}' e todos os seus dados foram removidos."}
 
+    logger.info("Admin deleted user", extra={
+        "event": "admin.user_deleted",
+        "admin_id": admin.id,
+        "deleted_username": username,
+    })
+    audit(db, user_id=admin.id, action="user.deleted", resource_type="user",
+          resource_id=user_id, details=username,
+          ip_address=request.client.host if request.client else None)
 
-# ─── System stats ─────────────────────────────────────────────────────────────
+    return {"message": f"Usuário '{username}' e todos os seus dados foram removidos."}
+
 
 @router.get("/stats")
 async def admin_stats(

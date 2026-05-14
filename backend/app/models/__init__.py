@@ -30,6 +30,8 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     force_password_change = Column(Boolean, default=False, nullable=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    login_locked = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     files = relationship("File", back_populates="owner")
@@ -91,7 +93,7 @@ class SshKeyPair(Base):
 
 class SharedFile(Base):
     __tablename__ = "shared_files"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     file_id = Column(Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
@@ -101,3 +103,16 @@ class SharedFile(Base):
     file = relationship("File", backref="shares")
     owner = relationship("User", foreign_keys=[owner_id])
     shared_with_user = relationship("User", foreign_keys=[shared_with_user_id])
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action = Column(String, nullable=False)
+    resource_type = Column(String, nullable=True)
+    resource_id = Column(Integer, nullable=True)
+    details = Column(Text, nullable=True)
+    ip_address = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

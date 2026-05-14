@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from app.models import FileType
 
 # ─── Auth / User ──────────────────────────────────────────────────────────────
@@ -54,6 +54,8 @@ class UserAdminView(BaseModel):
     role: str
     is_active: bool
     force_password_change: bool
+    failed_login_attempts: int = 0
+    login_locked: bool = False
     last_login: Optional[datetime]
     created_at: datetime
 
@@ -64,7 +66,7 @@ class UserAdminCreate(BaseModel):
     email: EmailStr
     username: str
     full_name: Optional[str] = None
-    role: str = "user"
+    role: Literal["admin", "user"] = "user"
 
 class UserAdminCreateResponse(UserAdminView):
     generated_password: str
@@ -72,7 +74,7 @@ class UserAdminCreateResponse(UserAdminView):
 class UserAdminUpdate(BaseModel):
     email: Optional[EmailStr] = None
     is_active: Optional[bool] = None
-    role: Optional[str] = None
+    role: Optional[Literal["admin", "user"]] = None
     force_password_change: Optional[bool] = None
 
 class AdminResetPassword(BaseModel):

@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -12,14 +13,18 @@ from app.models import User, SshKeyPair
 from app.schemas import SSHKeyCreate, SSHKeyResponse
 from app.routers.auth import get_current_user
 from app.utils.crypto import generate_ssh_keypair
+from app.utils.file_crypto import encrypt_file, decrypt_file
 from app.config import settings
 
 router = APIRouter()
+logger = logging.getLogger("ssl_manager.ssh")
 
 
-def _parse_tags(raw: str | None) -> list:
+def _parse_tags(raw) -> list:
     if not raw:
         return []
+    if isinstance(raw, list):
+        return raw
     try:
         return json.loads(raw)
     except Exception:
@@ -48,16 +53,7 @@ async def generate_ssh_key(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Generate an SSH key pair.
-
-    The private key is saved to disk (optionally encrypted with the supplied
-    passphrase using OpenSSH bcrypt-KDF).  The passphrase itself is **never**
-    persisted — only the flag `has_passphrase` is stored so the user knows
-    whether their key is protected.
-
-    The public key (authorized_keys format) is safe to store in the database
-    and is returned in every response for easy copying.
-    """
+    """Generate an SSH key pair. Private key encrypted at rest when ENCRYPTION_KEY is set."""
     try:
         private_key_bytes, public_key_line = generate_ssh_keypair(
             key_type=data.key_type,
@@ -68,16 +64,14 @@ async def generate_ssh_key(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Erro ao gerar chave SSH: {exc}")
 
-    # Persist the private key to disk
     os.makedirs(settings.SSL_FILES_DIR, exist_ok=True)
     timestamp = int(datetime.utcnow().timestamp())
     filename = f"ssh_{current_user.id}_{timestamp}.pem"
     file_path = os.path.join(settings.SSL_FILES_DIR, filename)
 
     async with aiofiles.open(file_path, "wb") as f:
-        await f.write(private_key_bytes)
+        await f.write(encrypt_file(private_key_bytes, settings.ENCRYPTION_KEY))
 
-    # Determine effective key_size (Ed25519 has no configurable size)
     effective_size: int | None = None
     if data.key_type.upper() != "ED25519":
         effective_size = data.key_size
@@ -98,7 +92,6 @@ async def generate_ssh_key(
     db.add(db_pair)
     db.commit()
     db.refresh(db_pair)
-
     return _to_response(db_pair)
 
 
@@ -139,7 +132,7 @@ async def download_private_key(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Download the private key file."""
+    """Download the private key file (decrypted from at-rest encryption)."""
     pair = db.query(SshKeyPair).filter(
         SshKeyPair.id == pair_id,
         SshKeyPair.owner_id == current_user.id,
@@ -150,8 +143,9 @@ async def download_private_key(
         raise HTTPException(status_code=404, detail="Arquivo não encontrado no disco")
 
     async with aiofiles.open(pair.private_key_path, "rb") as f:
-        content = await f.read()
+        raw = await f.read()
 
+    content = decrypt_file(raw, settings.ENCRYPTION_KEY)
     safe_name = pair.custom_name.replace(" ", "_")
     return Response(
         content=content,
@@ -204,7 +198,6 @@ async def delete_ssh_key(
         if os.path.exists(file_path):
             os.remove(file_path)
     except Exception as exc:
-        # Log but don't fail — DB record already removed
-        print(f"Warning: could not delete SSH private key from disk: {exc}")
+        logger.warning("Could not delete SSH private key from disk", extra={"path": file_path, "error": str(exc)})
 
     return {"message": "SSH key pair deleted", "id": pair_id}

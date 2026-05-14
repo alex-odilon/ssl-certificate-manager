@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse as FastAPIFileResponse
 from sqlalchemy.orm import Session
 from typing import List
+import os
 
 from app.database import get_db
 from app.models import User, File, SharedFile
@@ -116,6 +118,31 @@ async def revoke_share(
     db.delete(share)
     db.commit()
     return {"message": "Compartilhamento revogado com sucesso."}
+
+
+@router.get("/download/{file_id}")
+async def download_shared_file(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Download a file that was shared with the current user."""
+    share = db.query(SharedFile).filter(
+        SharedFile.file_id == file_id,
+        SharedFile.shared_with_user_id == current_user.id,
+    ).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Arquivo compartilhado não encontrado.")
+
+    file = db.query(File).filter(File.id == file_id).first()
+    if not file or not os.path.exists(file.file_path):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado no disco.")
+
+    return FastAPIFileResponse(
+        path=file.file_path,
+        filename=file.custom_name,
+        media_type="application/octet-stream",
+    )
 
 
 @router.delete("/shared-with-me/{file_id}")

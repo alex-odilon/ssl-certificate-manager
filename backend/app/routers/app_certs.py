@@ -1,9 +1,5 @@
-"""Router for application-to-application certificate management.
-
-Covers:
-  - Generating self-signed certificates (with private key) for mTLS/server-to-server auth.
-  - Generating PFX bundles from a certificate + private key (no CA bundle required).
-"""
+"""Router for application-to-application certificate management."""
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -12,18 +8,22 @@ import os
 import aiofiles
 
 from app.database import get_db
-from app.models import User, File, FileType, PfxPassword
+from app.models import User, File, FileType
 from app.schemas import SelfSignedCertCreate, SelfSignedCertResponse, FileResponse
 from app.routers.auth import get_current_user
 from app.utils.crypto import generate_self_signed_certificate
+from app.utils.file_crypto import encrypt_file
 from app.config import settings
 
 router = APIRouter()
+logger = logging.getLogger("ssl_manager.app_certs")
 
 
-def _parse_tags(raw: str | None) -> list:
+def _parse_tags(raw) -> list:
     if not raw:
         return []
+    if isinstance(raw, list):
+        return raw
     try:
         return json.loads(raw)
     except Exception:
@@ -36,18 +36,7 @@ async def generate_self_signed(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Generate a self-signed certificate + private key pair.
-
-    Both files are saved to the database as regular SSL files so they can
-    be used in PFX generation, validation, and download — just like any
-    imported certificate.
-
-    The certificate includes:
-    - Extended Key Usage: Server Auth + Client Auth (mTLS ready)
-    - Key Usage: Digital Signature + Key Encipherment
-    - SAN: common_name + any extra san_domains
-    - Configurable validity period (1 day – 10 years)
-    """
+    """Generate a self-signed certificate + private key pair."""
     if not (1 <= data.validity_days <= 3650):
         raise HTTPException(
             status_code=400,
@@ -75,48 +64,53 @@ async def generate_self_signed(
     ts = int(datetime.utcnow().timestamp())
     tags_json = json.dumps(data.tags) if data.tags else "[]"
 
-    # ── Save certificate ───────────────────────────────────────────────────────
-    cert_filename = f"selfsigned_cert_{current_user.id}_{ts}.pem"
-    cert_path = os.path.join(settings.SSL_FILES_DIR, cert_filename)
-    async with aiofiles.open(cert_path, "wb") as f:
-        await f.write(cert_pem)
+    try:
+        cert_filename = f"selfsigned_cert_{current_user.id}_{ts}.pem"
+        cert_path = os.path.join(settings.SSL_FILES_DIR, cert_filename)
+        async with aiofiles.open(cert_path, "wb") as f:
+            await f.write(cert_pem)  # Certificates are public — no encryption needed
 
-    db_cert = File(
-        filename=cert_filename,
-        custom_name=data.custom_name,
-        description=data.description,
-        file_type=FileType.CERTIFICATE,
-        file_path=cert_path,
-        tags=tags_json,
-        owner_id=current_user.id,
-    )
-    db.add(db_cert)
+        db_cert = File(
+            filename=cert_filename,
+            custom_name=data.custom_name,
+            description=data.description,
+            file_type=FileType.CERTIFICATE,
+            file_path=cert_path,
+            tags=tags_json,
+            owner_id=current_user.id,
+        )
+        db.add(db_cert)
 
-    # ── Save private key ───────────────────────────────────────────────────────
-    key_filename = f"selfsigned_key_{current_user.id}_{ts}.pem"
-    key_path = os.path.join(settings.SSL_FILES_DIR, key_filename)
-    async with aiofiles.open(key_path, "wb") as f:
-        await f.write(key_pem)
+        key_filename = f"selfsigned_key_{current_user.id}_{ts}.pem"
+        key_path = os.path.join(settings.SSL_FILES_DIR, key_filename)
+        async with aiofiles.open(key_path, "wb") as f:
+            await f.write(encrypt_file(key_pem, settings.ENCRYPTION_KEY))
 
-    db_key = File(
-        filename=key_filename,
-        custom_name=f"{data.custom_name}_chave_privada",
-        description=f"Chave privada do certificado autoassinado: {data.custom_name}",
-        file_type=FileType.PRIVATE_KEY,
-        file_path=key_path,
-        tags=tags_json,
-        owner_id=current_user.id,
-    )
-    db.add(db_key)
-    db.commit()
-    db.refresh(db_cert)
-    db.refresh(db_key)
+        db_key = File(
+            filename=key_filename,
+            custom_name=f"{data.custom_name}_chave_privada",
+            description=f"Chave privada do certificado autoassinado: {data.custom_name}",
+            file_type=FileType.PRIVATE_KEY,
+            file_path=key_path,
+            tags=tags_json,
+            owner_id=current_user.id,
+        )
+        db.add(db_key)
+        db.commit()
+        db.refresh(db_cert)
+        db.refresh(db_key)
 
-    # Parse tags for response
-    db_cert.tags = _parse_tags(db_cert.tags)
-    db_key.tags = _parse_tags(db_key.tags)
+        db_cert.tags = _parse_tags(db_cert.tags)
+        db_key.tags = _parse_tags(db_key.tags)
 
-    return SelfSignedCertResponse(
-        certificate=FileResponse.model_validate(db_cert),
-        private_key=FileResponse.model_validate(db_key),
-    )
+        return SelfSignedCertResponse(
+            certificate=FileResponse.model_validate(db_cert),
+            private_key=FileResponse.model_validate(db_key),
+        )
+
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        logger.error("Self-signed cert generation failed", exc_info=True, extra={"user_id": current_user.id})
+        raise HTTPException(status_code=500, detail="Erro ao salvar certificado. Contate o administrador.")
