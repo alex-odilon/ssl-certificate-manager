@@ -85,3 +85,9 @@ logs/
 
 # Docker
 docker-compose.override.yml
+
+# Nginx certs
+nginx/certs/
+
+# Claude memory
+memory/
