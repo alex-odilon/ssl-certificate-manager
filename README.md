@@ -1,296 +1,375 @@
-# SSL Certificate Manager 🔐
+# SSL Certificate Manager
 
-Uma aplicação web completa e moderna para gerenciamento de certificados SSL/TLS, chaves privadas, CSRs e arquivos PFX com interface intuitiva e gamificada.
+Plataforma interna da BSA Tech para gerenciamento centralizado de certificados SSL/TLS, chaves criptográficas e identidades digitais. Desenvolvida e mantida pelo time de DevOps.
 
-## 🌟 Características Principais
+---
 
-- **Interface Moderna**: Dark theme com Material-UI e animações suaves
-- **Totalmente Dockerizada**: Setup completo com um único comando
-- **Segurança em Primeiro Lugar**: Autenticação JWT, senhas criptografadas
-- **100% em Português**: Interface completamente localizada
+## Sumário
 
-## 🚀 Funcionalidades
+1. [Visão Geral](#visão-geral)
+2. [Funcionalidades](#funcionalidades)
+3. [Arquitetura e Tecnologias](#arquitetura-e-tecnologias)
+4. [Estrutura do Projeto](#estrutura-do-projeto)
+5. [Segurança](#segurança)
+6. [Instalação](#instalação)
+7. [Acesso e Gestão de Usuários](#acesso-e-gestão-de-usuários)
+8. [Comandos Operacionais](#comandos-operacionais)
+9. [Solução de Problemas](#solução-de-problemas)
 
-### 🔑 Gerenciamento de Chaves Privadas
-- ✅ Geração de chaves RSA 2048 bits
-- ✅ Importação de chaves existentes (sem senha)
-- ✅ Validação automática
-- ✅ Download seguro
+---
 
-### 📜 Certificate Signing Requests (CSR)
-- ✅ Geração com formulário intuitivo
-- ✅ Suporte a certificados wildcard (*.dominio.com)
-- ✅ Geração automática de chave privada correspondente
-- ✅ Campos opcionais (email agora é opcional)
+## Visão Geral
 
-### 📦 Arquivos PFX/PKCS12
-- ✅ Geração automatizada combinando certificado + chave + CA bundle
-- ✅ Senhas seguras geradas automaticamente (25 caracteres)
-- ✅ Visualização de senhas com proteção
-- ✅ Sistema de cópia de senha com um clique
+O SSL Certificate Manager resolve o problema de certificados e chaves privadas espalhados por e-mails, pastas compartilhadas e dispositivos pessoais — sem controle de acesso, sem rastreabilidade e com alto risco de expiração silenciosa.
 
-### 📋 Importação e Organização
-- ✅ Upload de certificados e CA bundles via drag & drop
-- ✅ Sistema de tags para organização
-- ✅ Descrições personalizadas
-- ✅ Busca avançada com filtros
+A plataforma oferece:
 
-### 🔍 Validação de Arquivos
-- ✅ Validação sem armazenamento
-- ✅ Suporte para arquivos existentes ou upload
-- ✅ Detecção automática de tipo de arquivo
-- ✅ Carregamento automático de senha para PFX
-- ✅ Informações detalhadas sobre certificados
+- Geração e armazenamento centralizado de todos os tipos de artefatos criptográficos
+- Chaves privadas criptografadas em repouso (Fernet/AES-128-CBC)
+- Controle de acesso por usuário com isolamento completo de arquivos
+- Compartilhamento controlado entre usuários internos
+- Trilha de auditoria de todas as operações sensíveis
+- Interface web multilíngue (pt-BR, en, es)
 
-### 📊 Dashboard Inteligente
-- ✅ Estatísticas em tempo real
-- ✅ **Alertas de certificados expirando**
-- ✅ Cards interativos com navegação direta
-- ✅ Ações rápidas
+**Acesso:** `https://sslmanager.bsatech.local` (rede interna / VPN)
 
-### 🗂️ Gerenciamento de Arquivos
-- ✅ Visualização por tipo com abas
-- ✅ Busca por nome, descrição ou tags
-- ✅ Download individual
-- ✅ Exclusão com confirmação
-- ✅ Contadores por tipo de arquivo
+**Solicitação de acesso:** abra um chamado no GLPI para o time de DevOps, categoria *Certificados Digitais*.
 
-## 🛠️ Tecnologias Utilizadas
+---
+
+## Funcionalidades
+
+### Chaves Privadas RSA / EC
+- Geração de chaves RSA (2048, 3072, 4096 bits) e EC (P-256, P-384)
+- Upload de chaves existentes com validação de formato PEM
+- Download com descriptografia transparente
+- Armazenamento criptografado em repouso
+
+### Certificate Signing Requests (CSR)
+- Formulário com todos os campos Distinguished Name (CN, O, OU, C, ST, L)
+- Suporte a Subject Alternative Names (SANs) — múltiplos domínios e IPs
+- Geração automática da chave privada correspondente
+
+### Certificados Auto Assinados
+- Geração de certificado + chave em uma única operação
+- Configuração de validade (1 a 3650 dias)
+- SANs e parâmetros completos de DN
+
+### Arquivos PFX / PKCS#12
+- Combinação de certificado + chave privada + CA bundle opcional
+- Senha de 25 caracteres gerada automaticamente e armazenada criptografada
+- Compatibilidade com ambientes Windows e IIS
+
+### Pares de Chaves SSH
+- Algoritmos: Ed25519, RSA (2048/4096), ECDSA (P-256/P-384)
+- Suporte a passphrase opcional
+- Download separado de chave pública e privada
+
+### Validação de Arquivos
+- Validação de certificados, chaves, CSRs e PFX sem armazenamento
+- Informações detalhadas: validade, emissor, SANs, algoritmo, fingerprint
+- Carga automática de senha para validação de PFX
+
+### Compartilhamento de Arquivos
+- Compartilhamento de qualquer arquivo com outro usuário da plataforma por e-mail
+- Isolamento: cada usuário acessa apenas seus próprios arquivos e o que foi compartilhado com ele
+
+### Dashboard
+- Estatísticas em tempo real por tipo de arquivo
+- Alertas de certificados próximos ao vencimento (30 dias / 7 dias)
+
+### Administração
+- Criação de usuários com senha temporária gerada automaticamente
+- Ativação, desativação, troca de papel (admin / user)
+- Reset de senha e desbloqueio de conta
+- Bloqueio automático após 3 tentativas de login incorretas
+
+---
+
+## Arquitetura e Tecnologias
 
 ### Backend
-- **Python 3.11** com **FastAPI**
-- **PostgreSQL** para persistência
-- **SQLAlchemy** ORM
-- **Cryptography** e **PyOpenSSL**
-- **JWT** para autenticação
-- **Uvicorn** ASGI server
+- **Python 3.11** + **FastAPI** 0.104
+- **PostgreSQL 15** — persistência de dados
+- **SQLAlchemy 2.0** — ORM
+- **Gunicorn** + **UvicornWorker** — servidor ASGI de produção
+- **cryptography** + **pyOpenSSL** — operações criptográficas
+- **python-jose** — JWT (HS256)
+- **passlib / bcrypt** — hash de senhas
+- **slowapi** — rate limiting por IP
+- **Logging JSON estruturado** — todos os eventos com timestamp, nível e contexto
 
 ### Frontend
-- **React 18** com **TypeScript**
-- **Material-UI v5** para componentes
-- **React Router v6** para navegação
-- **Axios** para requisições HTTP
-- **React Hook Form** para formulários
-- **React Dropzone** para upload
-- **React Toastify** para notificações
+- **React 18** + **TypeScript**
+- **Material-UI v5**
+- **React Router v6**
+- **Axios**
+- **i18n** — pt-BR, en, es
 
 ### Infraestrutura
-- **Docker** e **Docker Compose**
-- **Nginx** (opcional para produção)
-- Volumes persistentes para dados
+- **Docker** + **Docker Compose**
+- **Nginx** — proxy reverso com TLS 1.2/1.3, HSTS, headers de segurança
+- Volumes Docker persistentes para banco de dados e arquivos SSL
 
-## 📦 Instalação e Execução
+---
 
-### Pré-requisitos
-- Docker e Docker Compose instalados
-- Git
-- Porta 3000 (frontend) e 8000 (backend) livres
-
-### Passo a Passo
-
-1. **Clone o repositório**
-```bash
-git clone <seu-repositorio>
-cd ssl-certificate-manager
-```
-
-2. **Configure as variáveis de ambiente**
-```bash
-cp .env.example .env
-# Edite .env e altere a SECRET_KEY para produção
-```
-
-3. **Inicie a aplicação**
-```bash
-docker compose up -d
-```
-
-4. **Acesse a aplicação**
-- Frontend: http://localhost:3000
-- API: http://localhost:8000
-- Documentação da API: http://localhost:8000/docs
-
-## 🎯 Como Usar
-
-### 1. Criar uma Conta
-- Acesse http://localhost:3000
-- Clique em "Não tem uma conta? Cadastre-se"
-- Preencha email, usuário e senha
-
-### 2. Fluxo Típico de Uso
-
-#### Gerar um Certificado SSL:
-1. **Gere ou importe uma chave privada**
-   - Menu → "Gerar Chave Privada"
-   - Ou importe uma existente (deve estar sem senha)
-
-2. **Crie um CSR**
-   - Menu → "Gerar CSR"
-   - Preencha os dados da organização
-   - Escolha entre certificado normal ou wildcard
-
-3. **Envie o CSR para uma CA**
-   - Faça download do CSR gerado
-   - Envie para sua Autoridade Certificadora
-
-4. **Importe o certificado recebido**
-   - Menu → "Meus Arquivos" → "Importar Arquivo"
-   - Importe o certificado (.crt)
-   - Importe o CA Bundle/Intermediate
-
-5. **Gere o PFX final**
-   - Menu → "Gerar PFX"
-   - Selecione certificado, CA bundle e chave privada
-   - A senha será gerada automaticamente
-
-### 3. Recursos Especiais
-
-#### 🚨 Monitoramento de Validade
-- O dashboard exibe alertas automáticos para certificados próximos do vencimento
-- Certificados com menos de 30 dias aparecem em destaque
-- Tags "URGENTE" para menos de 7 dias
-
-#### 🔐 Gerenciamento de Senhas PFX
-- Senhas são geradas com 25 caracteres (letras e números)
-- Armazenadas de forma criptografada
-- Podem ser copiadas com um clique
-- Carregamento automático na validação
-
-#### 🏷️ Organização com Tags
-- Adicione tags aos seus arquivos
-- Busque rapidamente por tags
-- Útil para ambientes com muitos certificados
-
-## 🔒 Segurança
-
-### Recursos de Segurança
-- ✅ Autenticação JWT com expiração configurável
-- ✅ Senhas hasheadas com bcrypt
-- ✅ Isolamento por usuário (cada usuário vê apenas seus arquivos)
-- ✅ Validação de entrada em todos os endpoints
-- ✅ Proteção contra injeção SQL via ORM
-- ✅ CORS configurado
-
-### Recomendações para Produção
-1. **Altere a SECRET_KEY** no arquivo .env
-2. **Use HTTPS** com certificado válido
-3. **Configure um proxy reverso** (Nginx/Apache)
-4. **Faça backup regular** dos volumes Docker
-5. **Monitore logs** de acesso e erros
-6. **Atualize dependências** regularmente
-
-## 📝 Comandos Úteis
-
-### Docker Compose
-```bash
-# Iniciar em modo detached
-docker compose up -d
-
-# Ver logs
-docker compose logs -f
-
-# Parar aplicação
-docker compose down
-
-# Limpar tudo (CUIDADO: apaga dados!)
-docker compose down -v
-```
-
-### Backup
-```bash
-# Backup do banco de dados
-docker compose exec postgres pg_dump -U sslmanager sslmanager > backup.sql
-
-# Backup dos arquivos SSL
-docker run --rm -v ssl-certificate-manager_ssl_files:/data -v $(pwd):/backup alpine tar -czf /backup/ssl_files_backup.tar.gz -C /data .
-```
-
-### Desenvolvimento
-```bash
-# Acessar container do backend
-docker compose exec backend bash
-
-# Acessar banco de dados
-docker compose exec postgres psql -U sslmanager
-
-# Rebuild após mudanças
-docker compose build
-docker compose up -d
-```
-
-## 🐛 Solução de Problemas
-
-### Erro ao importar chave privada
-- **Problema**: "A chave privada está protegida por senha"
-- **Solução**: Remova a senha com:
-  ```bash
-  openssl rsa -in chave_com_senha.key -out chave_sem_senha.key
-  ```
-
-### Erro de CORS
-- **Problema**: Bloqueio de CORS no navegador
-- **Solução**: Verifique se está acessando por http://localhost:3000
-
-### Container não inicia
-- **Problema**: Portas em uso
-- **Solução**: 
-  ```bash
-  # Verificar portas em uso
-  sudo lsof -i :3000
-  sudo lsof -i :8000
-  ```
-
-## 📊 Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 ssl-certificate-manager/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py           # Aplicação FastAPI
-│   │   ├── models.py         # Modelos SQLAlchemy
-│   │   ├── schemas.py        # Schemas Pydantic
-│   │   ├── routers/          # Endpoints da API
-│   │   └── utils/            # Funções auxiliares
-│   ├── requirements.txt      # Dependências Python
+│   │   ├── main.py               # Entrypoint FastAPI, middlewares, migrations
+│   │   ├── config.py             # Configuração via pydantic-settings
+│   │   ├── database.py           # Sessão SQLAlchemy
+│   │   ├── rate_limit.py         # Instância slowapi compartilhada
+│   │   ├── logging_config.py     # Logging JSON estruturado
+│   │   ├── models/
+│   │   │   └── __init__.py       # Modelos SQLAlchemy (User, File, SSHKey, AuditLog…)
+│   │   ├── schemas/
+│   │   │   └── __init__.py       # Schemas Pydantic
+│   │   ├── routers/
+│   │   │   ├── auth.py           # Login, troca de senha, /me
+│   │   │   ├── admin.py          # Gestão de usuários (admin only)
+│   │   │   ├── keys.py           # Chaves RSA/EC
+│   │   │   ├── csr.py            # CSRs
+│   │   │   ├── certificates.py   # Upload/download de certificados
+│   │   │   ├── app_certs.py      # Certificados auto assinados
+│   │   │   ├── pfx.py            # Geração de PFX
+│   │   │   ├── ssh.py            # Pares de chaves SSH
+│   │   │   ├── files.py          # Listagem, tags, exclusão
+│   │   │   ├── shares.py         # Compartilhamento entre usuários
+│   │   │   └── validation.py     # Validação sem armazenamento
+│   │   └── utils/
+│   │       ├── file_crypto.py    # Criptografia Fernet de arquivos em repouso
+│   │       ├── crypto.py         # Helpers criptográficos
+│   │       └── audit.py          # Escrita na tabela audit_logs
+│   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/           # Páginas React
-│   │   ├── components/      # Componentes reutilizáveis
-│   │   ├── contexts/        # Context API
-│   │   └── App.tsx          # Componente principal
-│   ├── package.json         # Dependências Node
+│   │   ├── pages/                # Dashboard, Login, Files, Validation…
+│   │   ├── components/           # Componentes reutilizáveis
+│   │   ├── contexts/             # AuthContext, LanguageContext
+│   │   └── App.tsx
+│   ├── package.json
 │   └── Dockerfile
-├── docker-compose.yml       # Orquestração dos containers
-├── .env.example            # Exemplo de variáveis
-└── README.md               # Este arquivo
+├── nginx/
+│   ├── nginx.conf                # Proxy reverso com TLS
+│   └── GERAR-CERTIFICADO.md     # Guia para gerar o certificado local
+├── docker-compose.yml
+├── .env.example                  # Modelo de variáveis de ambiente
+└── README.md
 ```
-
-## 🤝 Contribuindo
-
-Contribuições são bem-vindas! Por favor:
-
-1. Fork o projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
-
-## 📄 Licença
-
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
-
-## 👥 Autor
-
-- Alex Odilon - [@alex-odilon](https://github.com/alex-odilon)
-
-## 🙏 Agradecimentos
-
-- [FastAPI](https://fastapi.tiangolo.com/) pela excelente framework
-- [Material-UI](https://mui.com/) pelos componentes React
-- [Docker](https://www.docker.com/) pela containerização
-- Comunidade open source pelos pacotes utilizados
 
 ---
 
-Feito com ❤️ e ☕ por Alex Odilon
+## Segurança
+
+### Implementado
+
+| Controle | Detalhe |
+|---|---|
+| Chaves em repouso | Fernet (AES-128-CBC + HMAC-SHA256) com chave derivada do `ENCRYPTION_KEY` |
+| Senhas PFX | Criptografadas no banco com `ENCRYPTION_KEY` (chave separada do JWT) |
+| Autenticação | JWT HS256, expiração configurável (padrão 8 horas) |
+| Bloqueio de conta | Bloqueio automático após 3 tentativas incorretas; desbloqueio via admin |
+| Rate limiting | 15 req/min por IP no endpoint de login (slowapi) |
+| CSRF | Middleware valida header `Origin` em todos os métodos de mutação |
+| Isolamento de dados | Cada usuário acessa apenas seus próprios arquivos |
+| Trilha de auditoria | Tabela `audit_logs` registra criação/exclusão de usuários, desbloqueios e operações sensíveis |
+| Logging estruturado | JSON com timestamp, nível, módulo, função e contexto da requisição |
+| TLS | Nginx com TLS 1.2/1.3, HSTS, X-Frame-Options DENY, X-Content-Type-Options |
+| `/docs` | Desabilitado por padrão em produção (`ENABLE_DOCS=false`) |
+| Hashes de senha | bcrypt |
+
+### Variáveis de ambiente obrigatórias
+
+Copie `.env.example` para `.env` e preencha **todos** os valores antes de subir:
+
+```bash
+cp .env.example .env
+```
+
+Gere chaves seguras com:
+
+```bash
+openssl rand -hex 32   # para SECRET_KEY
+openssl rand -hex 32   # para ENCRYPTION_KEY (deve ser diferente)
+```
+
+A aplicação recusa subir se `SECRET_KEY` ou `ENCRYPTION_KEY` estiverem com os valores padrão do `.env.example`.
+
+---
+
+## Instalação
+
+### Pré-requisitos
+
+- Docker 24+ e Docker Compose v2
+- Git
+- Acesso à rede interna (para resolver `sslmanager.bsatech.local`)
+
+### 1. Clonar o repositório
+
+```bash
+git clone <repositorio-interno>
+cd ssl-certificate-manager
+```
+
+### 2. Configurar variáveis de ambiente
+
+```bash
+cp .env.example .env
+# Editar .env e preencher SECRET_KEY, ENCRYPTION_KEY, ADMIN_PASSWORD, POSTGRES_PASSWORD
+```
+
+### 3. Gerar o certificado TLS local
+
+Siga o guia completo em [nginx/GERAR-CERTIFICADO.md](nginx/GERAR-CERTIFICADO.md).
+
+Resumo:
+
+```bash
+mkdir -p nginx/certs
+# Criar nginx/certs/san.conf conforme o guia
+openssl req -x509 -newkey rsa:4096 \
+  -keyout nginx/certs/sslmanager.bsatech.local.key \
+  -out    nginx/certs/sslmanager.bsatech.local.crt \
+  -days 1095 -nodes \
+  -config nginx/certs/san.conf -extensions v3_req
+```
+
+### 4. Adicionar entrada no /etc/hosts (se necessário)
+
+```bash
+sudo sh -c 'echo "127.0.0.1  sslmanager.bsatech.local" >> /etc/hosts'
+```
+
+### 5. Subir o stack
+
+```bash
+docker compose up -d --build
+```
+
+### 6. Verificar saúde da aplicação
+
+```bash
+curl -sk https://sslmanager.bsatech.local/health
+# {"status":"healthy","database":"ok"}
+```
+
+---
+
+## Acesso e Gestão de Usuários
+
+O registro público está desabilitado. Apenas administradores criam contas.
+
+### Solicitar acesso
+
+Abra um chamado no **GLPI** com:
+- Nome completo
+- E-mail corporativo
+- Justificativa / projeto relacionado
+
+Categoria: **DevOps / Certificados Digitais**
+
+### Primeiro acesso
+
+As credenciais iniciais são entregues pelo time de DevOps. No primeiro login a plataforma exige a troca de senha.
+
+### Conta do administrador padrão
+
+Definida em `.env` pelas variáveis `ADMIN_USERNAME` / `ADMIN_PASSWORD`. Altere antes do primeiro deploy.
+
+---
+
+## Comandos Operacionais
+
+### Logs
+
+```bash
+# Todos os serviços
+docker compose logs -f
+
+# Apenas backend (logs JSON estruturados)
+docker compose logs -f backend
+```
+
+### Backup
+
+```bash
+# Banco de dados
+docker compose exec postgres pg_dump -U sslmanager sslmanager > backup_$(date +%F).sql
+
+# Arquivos SSL (volume)
+docker run --rm \
+  -v ssl-certificate-manager_ssl_files:/data \
+  -v $(pwd):/backup \
+  alpine tar -czf /backup/ssl_files_$(date +%F).tar.gz -C /data .
+```
+
+### Restaurar banco de dados
+
+```bash
+cat backup_YYYY-MM-DD.sql | docker compose exec -T postgres psql -U sslmanager sslmanager
+```
+
+### Rebuild após atualizações
+
+```bash
+git pull
+docker compose build --no-cache
+docker compose up -d
+```
+
+### Acesso ao banco (debug)
+
+```bash
+docker compose exec postgres psql -U sslmanager sslmanager
+```
+
+---
+
+## Solução de Problemas
+
+### Aplicação não sobe — variáveis inseguras
+
+```
+CRITICAL: SECRET_KEY está com valor padrão inseguro. Defina uma chave segura no .env.
+```
+
+Gere valores válidos com `openssl rand -hex 32` e atualize o `.env`.
+
+### Certificado TLS não encontrado
+
+```
+nginx: [emerg] cannot load certificate "/etc/nginx/certs/sslmanager.bsatech.local.crt"
+```
+
+Siga o [nginx/GERAR-CERTIFICADO.md](nginx/GERAR-CERTIFICADO.md) para gerar os certificados locais.
+
+### Conta bloqueada após tentativas incorretas
+
+Acesse com uma conta admin e desbloqueie o usuário em **Administração → Usuários → Desbloquear**.
+
+### Erro de importação de chave privada protegida por senha
+
+Remova a senha antes de importar:
+
+```bash
+openssl rsa -in chave_com_senha.key -out chave_sem_senha.key
+```
+
+### Container do backend reiniciando
+
+```bash
+docker compose logs backend --tail=50
+```
+
+Verifique se o PostgreSQL subiu antes (`depends_on: postgres: condition: service_healthy`) e se as variáveis do `.env` estão corretas.
+
+---
+
+Mantido pelo time de DevOps — BSA Tech.
+Dúvidas e incidentes: GLPI, categoria **DevOps / Certificados Digitais**.
