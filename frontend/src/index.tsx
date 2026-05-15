@@ -5,7 +5,7 @@ import App from './App';
 import axios from 'axios';
 
 // Configure axios defaults
-axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+axios.defaults.baseURL = import.meta.env.VITE_API_URL || '';
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement

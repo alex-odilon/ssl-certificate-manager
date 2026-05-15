@@ -76,9 +76,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     ports:
       - "3000:3000"
     depends_on:
@@ -86,7 +83,7 @@ services:
     networks:
       - sslmanager-network
     environment:
-      - REACT_APP_API_URL=http://localhost:8000
+      - VITE_API_URL=
     restart: unless-stopped
     deploy:
       resources:

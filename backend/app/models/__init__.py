@@ -45,7 +45,7 @@ class File(Base):
     filename = Column(String, nullable=False)
     custom_name = Column(String, nullable=False)
     description = Column(Text)
-    file_type = Column(SQLEnum(FileType), nullable=False)
+    file_type = Column(SQLEnum(FileType, create_type=False), nullable=False)
     file_path = Column(String, nullable=False)
     tags = Column(Text)  # JSON string
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)

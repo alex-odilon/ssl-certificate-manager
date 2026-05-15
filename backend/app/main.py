@@ -44,6 +44,14 @@ def _run_migrations(db) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS login_locked BOOLEAN DEFAULT FALSE",
+        # Ensure the filetype ENUM type exists (idempotent)
+        """
+        DO $$ BEGIN
+            CREATE TYPE filetype AS ENUM ('private_key', 'certificate', 'csr', 'pfx', 'ca_bundle');
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+        END $$;
+        """,
         # AuditLog table
         """CREATE TABLE IF NOT EXISTS audit_logs (
             id SERIAL PRIMARY KEY,
