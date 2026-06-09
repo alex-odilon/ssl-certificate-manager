@@ -506,7 +506,6 @@ def validate_pfx(pfx_data: bytes, password: str) -> Dict[str, Any]:
                 cmd,
                 input=password.encode(),
                 capture_output=True,
-                text=True,
             )
             if result.returncode != 0:
                 return {
@@ -514,7 +513,7 @@ def validate_pfx(pfx_data: bytes, password: str) -> Dict[str, Any]:
                     'error': 'Invalid password or corrupted PFX file'
                 }
 
-            cert_pem = result.stdout.encode()
+            cert_pem = result.stdout
             cert_info = validate_certificate(cert_pem)
 
             return {
